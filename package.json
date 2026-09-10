@@ -1,0 +1,9 @@
+{
+  "name": "spark-multi-agent-sandbox",
+  "version": "0.1.0",
+  "description": "Multi-Agent Software Sandbox for Apple Silicon",
+  "scripts": {
+    "start": "./run.sh",
+    "test": ".venv/bin/pytest -v"
+  }
+}
