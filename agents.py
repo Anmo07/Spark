@@ -19,6 +19,7 @@ import httpx
 from schemas import (
     CoderResponse,
     DesignerResponse,
+    MasterRouterResponse,
     ReviewerResponse,
     SupervisorResponse,
 )
@@ -85,6 +86,34 @@ You MUST respond with valid JSON matching this exact schema:
 Set 'passed' to true if the code is functional, well-structured, and meets the requirements.
 Do not wrap your output in markdown backticks or commentary; output ONLY raw valid JSON."""
 
+MASTER_ROUTER_SYSTEM_PROMPT = """You are the Master Orchestrator of the Spark multi-agent software sandbox.
+Your job is to evaluate the user's message and decide if it is:
+1. A general conversational question ("general_chat") — e.g. explaining concepts, answering questions, giving advice.
+2. A project execution request ("project_execution") — e.g. building software, writing code, creating files, modifying the project.
+
+You also receive the current project context from .spark_context.md to stay aware of the project state.
+
+You MUST respond with valid JSON matching this exact schema:
+{
+  "intent": "general_chat" or "project_execution",
+  "chat_response": "Your conversational response (required if intent is general_chat, null otherwise)",
+  "sub_tasks": [
+    {"description": "specific task description", "priority": 1}
+  ],
+  "context_update": "Brief summary of what was discussed or decided (for memory)"
+}
+
+Rules:
+- For general_chat: provide a helpful, clear chat_response. sub_tasks should be null.
+- For project_execution: chat_response should be null. Decompose the request into concrete sub_tasks that specialized agents (Supervisor, Designer, Coder, Reviewer) can execute.
+- Always provide a context_update summarizing the interaction for long-term memory.
+- Do not wrap your output in markdown backticks or commentary; output ONLY raw valid JSON."""
+
+CHAT_SYSTEM_PROMPT = """You are Spark, a helpful AI assistant embedded in a software development IDE.
+You help developers with questions about programming, architecture, debugging, and general tech topics.
+Provide clear, concise, and helpful responses. You can use markdown formatting.
+You have access to the project context below to understand the current state of the project."""
+
 
 class OllamaClient:
     """Asynchronous client for interacting with the local Ollama LLM daemon."""
@@ -126,6 +155,35 @@ class OllamaClient:
                 raise
             except json.JSONDecodeError as exc:
                 logger.error("Failed to parse JSON response from Ollama: %s | Raw: %s", exc, raw_content)
+                raise
+
+    async def generate_text(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        timeout: float = 120.0,
+    ) -> str:
+        """Send chat messages and return raw text (non-JSON) response."""
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": False,
+            "options": {
+                "temperature": 0.5,
+            },
+        }
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                resp = await client.post(f"{self.base_url}/api/chat", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("message", {}).get("content", "").strip()
+            except httpx.HTTPError as exc:
+                logger.error("Ollama HTTP error calling model %s: %s", self.model, exc)
                 raise
 
 
@@ -328,3 +386,106 @@ class AgentDispatcher:
 
         # Terminal states or unrelated statuses produce no further automated transitions
         return None
+
+
+class MasterAgent:
+    """Master Orchestrator that triages user prompts into chat or project execution."""
+
+    CONTEXT_FILE = ".spark_context.md"
+
+    def __init__(
+        self,
+        llm_client: Optional[OllamaClient] = None,
+        workspace_dir: Path = WORKSPACE_DIR,
+    ) -> None:
+        self.llm = llm_client or OllamaClient()
+        self.workspace_dir = workspace_dir
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    def _context_path(self) -> Path:
+        return self.workspace_dir / self.CONTEXT_FILE
+
+    def read_context(self) -> str:
+        """Read the current .spark_context.md contents."""
+        ctx_path = self._context_path()
+        if ctx_path.exists():
+            return ctx_path.read_text(encoding="utf-8")
+        return "# Spark Project Context\n\nNo project context yet. This is a fresh workspace.\n"
+
+    def _write_context(self, content: str) -> None:
+        """Write updated context to .spark_context.md."""
+        self._context_path().write_text(content, encoding="utf-8")
+
+    async def route(self, prompt: str) -> MasterRouterResponse:
+        """Classify user intent and return routing decision."""
+        context = self.read_context()
+        user_message = (
+            f"## Current Project Context\n{context}\n\n"
+            f"## User Message\n{prompt}"
+        )
+
+        try:
+            res_dict = await self.llm.generate_json(
+                system_prompt=MASTER_ROUTER_SYSTEM_PROMPT,
+                user_prompt=user_message,
+                timeout=120.0,
+            )
+            result = MasterRouterResponse.model_validate(res_dict)
+            logger.info("Master Agent routed prompt as: %s", result.intent)
+
+            # Update context memory with the interaction
+            if result.context_update:
+                self.update_context_memory(result.context_update)
+
+            return result
+        except Exception as exc:
+            logger.error("Master Agent routing failed: %s", exc)
+            # Fallback: treat as general chat with error message
+            return MasterRouterResponse(
+                intent="general_chat",
+                chat_response=f"I'm having trouble processing your request right now. Error: {str(exc)}",
+                context_update=None,
+            )
+
+    async def chat(self, prompt: str) -> str:
+        """Generate a direct conversational response (non-JSON)."""
+        context = self.read_context()
+        user_message = (
+            f"## Current Project Context\n{context}\n\n"
+            f"## User Question\n{prompt}"
+        )
+        try:
+            return await self.llm.generate_text(
+                system_prompt=CHAT_SYSTEM_PROMPT,
+                user_prompt=user_message,
+            )
+        except Exception as exc:
+            logger.error("Master Agent chat failed: %s", exc)
+            return f"Sorry, I encountered an error: {str(exc)}"
+
+    def update_context_memory(self, update_text: str) -> None:
+        """Append new information to the .spark_context.md file."""
+        import datetime
+        current = self.read_context()
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        updated = (
+            current.rstrip()
+            + f"\n\n## Update — {timestamp}\n{update_text}\n"
+        )
+        self._write_context(updated)
+        logger.info("Context memory updated at %s", timestamp)
+
+    def update_context_from_completion(self, event_data: Dict[str, Any]) -> None:
+        """Called when a task_completed event fires to record what was accomplished."""
+        summary = event_data.get("summary", "Task completed")
+        file_path = event_data.get("file_path", "unknown")
+        feedback = event_data.get("feedback", "")
+
+        update = (
+            f"- **Completed:** {summary}\n"
+            f"- **File:** `{file_path}`\n"
+        )
+        if feedback:
+            update += f"- **Review:** {feedback[:200]}\n"
+
+        self.update_context_memory(update)

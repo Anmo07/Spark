@@ -13,6 +13,7 @@ export default defineConfig({
         target: 'http://localhost:8000',
         ws: true,
       },
+      '/chat': 'http://localhost:8000',
       '/task': 'http://localhost:8000',
       '/events': 'http://localhost:8000',
       '/health': 'http://localhost:8000',

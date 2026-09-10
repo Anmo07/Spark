@@ -90,3 +90,32 @@ class ReviewerResponse(BaseModel):
     passed: bool
     feedback: str
     suggested_fixes: Optional[List[str]] = None
+
+
+# --- Master Agent Contracts (Phase 3) ---
+
+class MasterSubTask(BaseModel):
+    """A single sub-task decomposed by the Master Agent."""
+    description: str
+    priority: int = 1
+
+
+class MasterRouterResponse(BaseModel):
+    """Master Agent intent classification and routing output."""
+    intent: str = Field(description="Either 'general_chat' or 'project_execution'")
+    chat_response: Optional[str] = Field(default=None, description="Direct chat reply when intent is general_chat")
+    sub_tasks: Optional[List[MasterSubTask]] = Field(default=None, description="Decomposed sub-tasks when intent is project_execution")
+    context_update: Optional[str] = Field(default=None, description="Summary to append to .spark_context.md")
+
+
+class ChatRequest(BaseModel):
+    """User chat message payload for POST /chat."""
+    prompt: str = Field(description="The user's message to the Master Agent")
+
+
+class ChatResponse(BaseModel):
+    """Response from the Master Agent to the frontend."""
+    type: str = Field(description="'chat' for conversational, 'system_event' for pipeline dispatch")
+    content: str = Field(description="The message content to display")
+    sub_tasks: Optional[List[str]] = Field(default=None, description="List of dispatched sub-task descriptions")
+
