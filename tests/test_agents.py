@@ -142,15 +142,18 @@ async def test_circuit_breaker_on_repeated_rejection():
 
         # Attempt 1: Rejection -> loops back to pending_coder
         res1 = await dispatcher.process_event(evt_coder)
+        assert res1 is not None
         assert res1["status"] == "pending_coder"
         assert res1["data"]["retry_count"] == 1
 
         # Attempt 2: Rejection -> loops back to pending_coder
         res2 = await dispatcher.process_event(evt_coder)
+        assert res2 is not None
         assert res2["status"] == "pending_coder"
         assert res2["data"]["retry_count"] == 2
 
         # Attempt 3: Exceeds limit -> circuit breaker triggers task_completed
         res3 = await dispatcher.process_event(evt_coder)
+        assert res3 is not None
         assert res3["status"] == "task_completed"
         assert "Circuit breaker" in res3["data"]["warning"]

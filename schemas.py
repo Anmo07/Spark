@@ -9,14 +9,14 @@ from pydantic import BaseModel, Field, model_validator
 
 class TaskCreate(BaseModel):
     """User task ingestion payload for POST /task."""
-    prompt: str = Field(..., description="The objective or request submitted by the user")
+    prompt: str = Field(description="The objective or request submitted by the user")
 
 
 class EventCreate(BaseModel):
     """Event creation contract (role, status, data)."""
-    role: str = Field(..., description="Agent role or emitter (e.g., user, supervisor, coder)")
-    status: str = Field(..., description="Status trigger or stage (e.g., pending_supervisor, in_progress, completed)")
-    data: Union[Dict[str, Any], List[Any], str] = Field(..., description="Action payload or structured data")
+    role: str = Field(description="Agent role or emitter (e.g., user, supervisor, coder)")
+    status: str = Field(description="Status trigger or stage (e.g., pending_supervisor, in_progress, completed)")
+    data: Union[Dict[str, Any], List[Any], str] = Field(description="Action payload or structured data")
 
     @model_validator(mode="before")
     @classmethod
@@ -31,7 +31,7 @@ class EventResponse(BaseModel):
     """Event response contract for API and WebSocket streaming (id, timestamp, role, status, data)."""
     id: int
     timestamp: Union[datetime, str]
-    role: str = Field(..., description="Agent role or emitter")
+    role: str = Field(description="Agent role or emitter")
     status: str
     data: Union[Dict[str, Any], List[Any], str]
 

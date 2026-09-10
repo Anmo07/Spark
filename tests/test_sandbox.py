@@ -22,6 +22,8 @@ ROOT_DIR = Path(__file__).parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from typing import cast
+from fastapi import WebSocket
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -124,7 +126,7 @@ def test_schemas():
     task = TaskCreate(prompt="Create a microservice")
     assert task.prompt == "Create a microservice"
 
-    event_req = EventCreate(agent_role="coder", status="in_progress", data={"file": "main.py"})
+    event_req = EventCreate(role="coder", status="in_progress", data={"file": "main.py"})
     assert event_req.role == "coder"
 
     event_resp = EventResponse(
@@ -205,7 +207,7 @@ async def test_websocket_broadcast():
         async def send_json(self, message):
             messages_received.append(message)
 
-    mock_ws = MockWebSocket()
+    mock_ws = cast(WebSocket, MockWebSocket())
     await manager.connect(mock_ws)
     assert len(manager.active_connections) == 1
 
@@ -246,7 +248,7 @@ async def test_queue_worker_processing():
         async def send_json(self, data):
             received.append(data)
 
-    client = MockClient()
+    client = cast(WebSocket, MockClient())
     manager.active_connections.append(client)
 
     try:

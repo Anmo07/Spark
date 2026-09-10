@@ -4,6 +4,13 @@
   "description": "Multi-Agent Software Sandbox for Apple Silicon",
   "scripts": {
     "start": "./run.sh",
-    "test": ".venv/bin/pytest -v"
+    "test": ".venv/bin/pytest -v",
+    "build:css": "npx tailwindcss -i ./src/input.css -o ./static/style.css --minify",
+    "watch:css": "npx tailwindcss -i ./src/input.css -o ./static/style.css --watch"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.5.6",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.19"
   }
 }

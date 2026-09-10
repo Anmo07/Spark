@@ -112,6 +112,7 @@ class OllamaClient:
             },
         }
 
+        raw_content = ""
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 resp = await client.post(f"{self.base_url}/api/chat", json=payload)

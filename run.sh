@@ -45,6 +45,12 @@ fi
 echo "[+] Initializing SQLite Blackboard..."
 .venv/bin/python3 -c "import asyncio; from database import init_db; asyncio.run(init_db())"
 
-# 4. Launch FastAPI Event Bus Server
+# 4. Compile Tailwind CSS via PostCSS
+if command -v npm &> /dev/null && [ -f "package.json" ]; then
+    echo "[+] Compiling Tailwind CSS via PostCSS..."
+    npm run build:css
+fi
+
+# 5. Launch FastAPI Event Bus Server
 echo "[+] Starting FastAPI server at http://127.0.0.1:8000 ..."
 exec .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
