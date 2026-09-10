@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from agents import AgentDispatcher
@@ -31,6 +32,8 @@ from database import (
     search_events,
 )
 from schemas import EventResponse, SearchResponse, TaskCreate
+
+import os
 
 logging.basicConfig(
     level=logging.INFO,
@@ -150,8 +153,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+WORKSPACE_DIR = Path(__file__).parent / "sandbox_workspace"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -237,6 +250,74 @@ async def list_recent_events(limit: int = Query(50, ge=1, le=200)) -> List[Event
         )
         for row in raw_events
     ]
+
+
+# ---------------------------------------------------------------------------
+# Workspace file-management endpoints
+# ---------------------------------------------------------------------------
+
+def _build_tree(root: Path) -> dict:
+    """Recursively build a nested dict representing the directory tree."""
+    node: dict = {"name": root.name, "type": "directory", "children": []}
+    try:
+        entries = sorted(root.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    except PermissionError:
+        return node
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir():
+            node["children"].append(_build_tree(entry))
+        else:
+            node["children"].append({"name": entry.name, "type": "file"})
+    return node
+
+
+def _safe_workspace_path(relative: str) -> Path:
+    """Resolve a relative path inside WORKSPACE_DIR; raise 400 on traversal."""
+    resolved = (WORKSPACE_DIR / relative).resolve()
+    if not str(resolved).startswith(str(WORKSPACE_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Path escapes the sandbox workspace.")
+    return resolved
+
+
+@app.get("/workspace/tree")
+async def workspace_tree() -> dict:
+    """Return a nested JSON tree of sandbox_workspace/ contents."""
+    WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+    return _build_tree(WORKSPACE_DIR)
+
+
+@app.get("/workspace/file")
+async def workspace_read_file(path: str = Query(..., description="Relative file path inside sandbox_workspace")) -> dict:
+    """Read and return the text content of a workspace file."""
+    target = _safe_workspace_path(path)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+    try:
+        content = target.read_text(encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error reading file: {exc}")
+    return {"path": path, "content": content}
+
+
+from pydantic import BaseModel as _BaseModel
+
+class _FileWritePayload(_BaseModel):
+    path: str
+    content: str
+
+@app.post("/workspace/file")
+async def workspace_write_file(payload: _FileWritePayload) -> dict:
+    """Write (overwrite) a file inside sandbox_workspace/."""
+    target = _safe_workspace_path(payload.path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        target.write_text(payload.content, encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error writing file: {exc}")
+    return {"path": payload.path, "size": len(payload.content), "status": "written"}
+
 
 
 @app.websocket("/ws/events")

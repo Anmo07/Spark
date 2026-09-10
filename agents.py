@@ -8,6 +8,7 @@ and advances the Blackboard workflow through reactive triggers:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -96,7 +97,7 @@ class OllamaClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        timeout: float = 60.0,
+        timeout: float = 180.0,
     ) -> Dict[str, Any]:
         """Send chat messages with structured JSON formatting and return the parsed dict."""
         payload = {
@@ -279,9 +280,12 @@ class AgentDispatcher:
                         },
                     }
                 else:
-                    # Circuit breaker check
-                    retries = self.review_retries.get(event_id, 0) + 1
-                    self.review_retries[event_id] = retries
+                    # Circuit breaker keyed on root task prompt (stable across event IDs)
+                    task_key = hashlib.sha256(
+                        data.get("task_prompt", "").encode()
+                    ).hexdigest()[:16]
+                    retries = self.review_retries.get(task_key, 0) + 1
+                    self.review_retries[task_key] = retries
 
                     if retries <= self.circuit_breaker_limit:
                         logger.warning(
@@ -293,6 +297,7 @@ class AgentDispatcher:
                             "agent_role": "reviewer",
                             "status": "pending_coder",
                             "data": {
+                                "task_prompt": data.get("task_prompt", ""),
                                 "feedback": review.feedback,
                                 "suggested_fixes": review.suggested_fixes,
                                 "previous_code": data.get("code"),
