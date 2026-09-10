@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+@theme {
+  --color-panel: var(--bg-surface, #111118);
+  --color-dark: var(--bg-base, #0a0a0f);
+  --color-border: var(--border-default, #27272f);
+  --color-border-subtle: var(--border-subtle, #1e1e28);
+}

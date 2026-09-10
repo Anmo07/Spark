@@ -1,9 +1,14 @@
 {
-  "venvPath": "/Users/anmol/Documents/Projects/Spark",
+  "venvPath": ".",
   "venv": ".venv",
   "extraPaths": [
-    "/Users/anmol/Documents/Projects/Spark/.venv/lib/python3.9/site-packages",
+    ".",
     "./.venv/lib/python3.9/site-packages"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
   ],
   "include": [
     "."

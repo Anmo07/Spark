@@ -141,3 +141,32 @@ class RenameFilePayload(BaseModel):
     new_path: str = Field(description="Relative path of the new destination")
 
 
+# --- Phase 4 Git Schemas ---
+
+class GitCommitRequest(BaseModel):
+    """Payload for POST /git/commit."""
+    message: str = Field(description="Commit message")
+
+
+class GitPushRequest(BaseModel):
+    """Payload for POST /git/push."""
+    remote_url: str = Field(description="Remote repository SSH URL (e.g. git@github.com:user/repo.git)")
+
+
+class GitFileStatus(BaseModel):
+    """Status entry for a single modified/untracked file."""
+    status: str = Field(description="Porcelain status code (e.g. M, ??, A, D)")
+    file: str = Field(description="Relative path of the changed file")
+
+
+class GitStatusResponse(BaseModel):
+    """Response payload for GET /git/status."""
+    changes: List[GitFileStatus] = Field(default_factory=list, description="List of uncommitted changes")
+
+
+class GitOriginalResponse(BaseModel):
+    """Response payload for GET /git/original."""
+    path: str = Field(description="Relative path of the file")
+    content: str = Field(description="File content at HEAD")
+
+

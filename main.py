@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
+import io
 import json
 from contextlib import asynccontextmanager
 import logging
@@ -25,12 +26,13 @@ import shutil
 import struct
 import subprocess
 import termios
+import zipfile
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel as _BaseModel
 
@@ -42,11 +44,14 @@ from database import (
     insert_event,
     search_events,
 )
+from git_service import git_service
 from schemas import (
     ChatRequest,
     ChatResponse,
     DeleteFilePayload,
     EventResponse,
+    GitCommitRequest,
+    GitPushRequest,
     RenameFilePayload,
     RoadmapFeedbackRequest,
     SearchResponse,
@@ -209,6 +214,20 @@ async def queue_worker() -> None:
                     except Exception as exc:
                         logger.error("Failed to generate/broadcast final summary: %s", exc)
 
+                    # Phase 4 Objective 1.3: Auto-commit when task completes
+                    try:
+                        auto_commit_res = await git_service.commit(
+                            message="feat(agent): Auto-commit after task completion"
+                        )
+                        logger.info("Auto-commit completed: %s", auto_commit_res)
+                        await manager.broadcast({
+                            "type": "git_update",
+                            "action": "auto_commit",
+                            "details": auto_commit_res,
+                        })
+                    except Exception as exc:
+                        logger.warning("Auto-commit failed: %s", exc)
+
                 # Reactive Autonomous Agent Dispatch
                 next_action = await dispatcher.process_event(event)
                 if next_action:
@@ -242,6 +261,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application startup (DB init, background queue worker) and graceful shutdown."""
     global worker_task
     await init_db()
+    try:
+        await git_service.ensure_repo()
+    except Exception as exc:
+        logger.warning("Failed to initialize git repository on startup: %s", exc)
     worker_task = asyncio.create_task(queue_worker())
     logger.info("Application startup complete.")
     yield
@@ -752,6 +775,93 @@ async def workspace_delete(
     if not target_path:
         raise HTTPException(status_code=400, detail="Must provide 'path' as query param or in JSON payload.")
     return await _execute_delete(target_path)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Workspace Export & Git Version Control Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/workspace/export")
+async def workspace_export() -> StreamingResponse:
+    """Package the entire sandbox_workspace directory into an in-memory ZIP archive (Objective 2)."""
+    if not WORKSPACE_DIR.exists():
+        raise HTTPException(status_code=404, detail="Workspace directory not found")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, _, files in os.walk(WORKSPACE_DIR):
+            for file in files:
+                full_path = Path(root) / file
+                rel_path = full_path.relative_to(WORKSPACE_DIR)
+                zf.write(full_path, arcname=str(rel_path))
+
+    buffer.seek(0)
+    headers = {
+        "Content-Disposition": 'attachment; filename="spark_workspace.zip"'
+    }
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers=headers,
+    )
+
+
+@app.get("/git/status")
+async def git_status() -> Dict[str, Any]:
+    """Return structured JSON of uncommitted/untracked changes in sandbox_workspace/."""
+    return await git_service.get_status()
+
+
+@app.get("/git/original")
+async def git_original(path: str = Query(..., description="Relative path of file at HEAD")) -> Dict[str, Any]:
+    """Fetch original file content from HEAD for Monaco DiffEditor."""
+    return await git_service.get_original_file(path)
+
+
+@app.post("/git/commit")
+async def git_commit(payload: GitCommitRequest) -> Dict[str, Any]:
+    """Stage and commit changes in sandbox_workspace/."""
+    result = await git_service.commit(payload.message)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("message", "Commit failed"))
+    await manager.broadcast({
+        "type": "git_update",
+        "action": "commit",
+        "result": result,
+    })
+    return result
+
+
+@app.post("/git/revert")
+async def git_revert() -> Dict[str, Any]:
+    """Undo the last agent action / commit via git reset --hard HEAD~1."""
+    result = await git_service.revert_last()
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("message", "Revert failed"))
+    await manager.broadcast({
+        "type": "git_update",
+        "action": "revert",
+        "result": result,
+    })
+    await manager.broadcast({
+        "type": "fs_update",
+        "action": "refresh",
+    })
+    return result
+
+
+@app.post("/git/push")
+async def git_push(payload: GitPushRequest) -> Dict[str, Any]:
+    """Push local commits to remote SSH repository using native macOS SSH credentials."""
+    result = await git_service.push_to_remote(payload.remote_url)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("message", "Push failed"))
+    await manager.broadcast({
+        "type": "git_update",
+        "action": "push",
+        "result": result,
+    })
+    return result
 
 
 

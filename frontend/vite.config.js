@@ -18,6 +18,7 @@ export default defineConfig({
       '/events': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
       '/search': 'http://localhost:8000',
+      '/git': 'http://localhost:8000',
     },
   },
 })

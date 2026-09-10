@@ -23,6 +23,26 @@
   --font-mono: 'JetBrains Mono', 'Menlo', 'Cascadia Code', monospace;
 }
 
+/* ---------- High Contrast Dark Theme Tokens ---------- */
+[data-theme="high-contrast"],
+.theme-high-contrast {
+  --bg-base: #000000;
+  --bg-surface: #0a0a0c;
+  --bg-elevated: #121216;
+  --bg-hover: #1c1c24;
+  --border-default: #3b3b48;
+  --border-subtle: #252530;
+  --text-primary: #ffffff;
+  --text-secondary: #c0c0d2;
+  --text-muted: #88889e;
+  --accent-blue: #38bdf8;
+  --accent-emerald: #34d399;
+  --accent-amber: #fbbf24;
+  --accent-rose: #f43f5e;
+  --accent-violet: #a78bfa;
+  --accent-cyan: #22d3ee;
+}
+
 /* ---------- Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -603,6 +623,34 @@ html, body, #root {
 .terminal-toggle-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+}
+
+.theme-toggle-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
 }
 
 /* ========================== Right Sidebar (Chat) ======================= */
@@ -1247,5 +1295,146 @@ html, body, #root {
   border-color: var(--accent-blue);
   color: #fff;
   transform: translateY(-1px);
+}
+
+/* =========================================================================
+   Phase 4: Source Control & Diff Editor Styling
+   ========================================================================= */
+
+.sidebar-view-tabs {
+  display: flex;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-default);
+  padding: 4px 6px;
+  gap: 4px;
+}
+
+.sidebar-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-tab-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-tab-btn.active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.sidebar-badge {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 10px;
+  line-height: 1;
+}
+
+.diff-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: var(--bg-base);
+}
+
+.diff-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  font-size: 12px;
+}
+
+.diff-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+}
+
+.diff-filename {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.diff-badge {
+  font-size: 10px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.diff-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diff-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.diff-action-btn:hover {
+  background: var(--accent-blue);
+  color: #fff;
+  border-color: var(--accent-blue);
+}
+
+.diff-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.diff-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.diff-monaco-wrapper {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 

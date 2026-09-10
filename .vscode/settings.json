@@ -8,5 +8,6 @@
     "${workspaceFolder}/.venv/lib/python3.9/site-packages",
     "${workspaceFolder}"
   ],
-  "python.envFile": "${workspaceFolder}/.env"
+  "python.envFile": "${workspaceFolder}/.env",
+  "css.lint.unknownAtRules": "ignore"
 }

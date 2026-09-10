@@ -7,7 +7,11 @@ requires-python = ">=3.9"
 venvPath = "."
 venv = ".venv"
 extraPaths = [
+    ".",
     ".venv/lib/python3.9/site-packages"
+]
+executionEnvironments = [
+    { root = "." }
 ]
 
 [tool.pytest.ini_options]

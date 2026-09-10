@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { DiffEditor } from '@monaco-editor/react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -34,7 +34,11 @@ import {
   Globe,
   Eye,
   RotateCw,
+  GitBranch,
+  GitCompare,
+  Contrast,
 } from 'lucide-react';
+import SourceControl from './SourceControl';
 import './App.css';
 
 
@@ -465,7 +469,7 @@ function ChatMessage({ msg, onOpenFile, onApproveRoadmap, onFeedbackRoadmap, dis
    ========================================================================= */
 
 const TerminalPane = forwardRef(function TerminalPane(
-  { visible, isRunning, runningFile, previewInfo },
+  { visible, isRunning, runningFile, previewInfo, theme = 'high-contrast' },
   ref
 ) {
   const containerRef = useRef(null);
@@ -473,6 +477,36 @@ const TerminalPane = forwardRef(function TerminalPane(
   const fitAddonRef = useRef(null);
   const wsRef = useRef(null);
   const pendingCommandsRef = useRef([]);
+
+  const getTerminalTheme = useCallback((t) => {
+    return t === 'high-contrast' ? {
+      background: '#000000',
+      foreground: '#ffffff',
+      cursor: '#38bdf8',
+      selectionBackground: 'rgba(56, 189, 248, 0.45)',
+      black: '#000000',
+      red: '#ff4d6d',
+      green: '#00f59b',
+      yellow: '#ffd166',
+      blue: '#38bdf8',
+      magenta: '#c084fc',
+      cyan: '#22d3ee',
+      white: '#ffffff',
+    } : {
+      background: '#0a0a0f',
+      foreground: '#e4e4ed',
+      cursor: '#3b82f6',
+      selectionBackground: 'rgba(59, 130, 246, 0.3)',
+      black: '#1e1e28',
+      red: '#f43f5e',
+      green: '#10b981',
+      yellow: '#f59e0b',
+      blue: '#3b82f6',
+      magenta: '#8b5cf6',
+      cyan: '#06b6d4',
+      white: '#e4e4ed',
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     sendCommand: (cmd) => {
@@ -502,6 +536,13 @@ const TerminalPane = forwardRef(function TerminalPane(
     },
   }));
 
+  // Update theme dynamically when toggled
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = getTerminalTheme(theme);
+    }
+  }, [theme, getTerminalTheme]);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -520,20 +561,7 @@ const TerminalPane = forwardRef(function TerminalPane(
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Menlo', monospace",
-      theme: {
-        background: '#0a0a0f',
-        foreground: '#e4e4ed',
-        cursor: '#3b82f6',
-        selectionBackground: 'rgba(59, 130, 246, 0.3)',
-        black: '#1e1e28',
-        red: '#f43f5e',
-        green: '#10b981',
-        yellow: '#f59e0b',
-        blue: '#3b82f6',
-        magenta: '#8b5cf6',
-        cyan: '#06b6d4',
-        white: '#e4e4ed',
-      },
+      theme: getTerminalTheme(theme),
       scrollback: 5000,
       allowProposedApi: true,
     });
@@ -643,6 +671,24 @@ export default function App() {
   // --- Editor state ---
   const [openFiles, setOpenFiles] = useState([]);
   const [activeTab, setActiveTab] = useState(null);
+
+  // --- Phase 4 Source Control & Diff state ---
+  const [sidebarView, setSidebarView] = useState('explorer'); // 'explorer' | 'source_control'
+  const [gitChangesCount, setGitChangesCount] = useState(0);
+  const [diffView, setDiffView] = useState(null); // { path: string, original: string, modified: string } | null
+
+  // --- Theme state (High Contrast Dark vs Standard Dark) ---
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('spark_theme') || 'high-contrast';
+  });
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === 'high-contrast' ? 'dark' : 'high-contrast';
+      localStorage.setItem('spark_theme', next);
+      return next;
+    });
+  }, []);
 
   // --- Chat state ---
   const [messages, setMessages] = useState([]);
@@ -794,9 +840,68 @@ export default function App() {
   useEffect(() => { fetchTree(); }, [fetchTree]);
 
   // ==========================
-  // File operations
+  // Phase 4: Git & File operations
   // ==========================
+  const fetchGitStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/git/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setGitChangesCount((data.changes || []).length);
+      }
+    } catch (err) {
+      console.error('Failed to fetch git status:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGitStatus();
+  }, [fetchGitStatus]);
+
+  const openDiffView = useCallback(async (filepath) => {
+    try {
+      // 1. Fetch original content at HEAD
+      const origRes = await fetch(`${API_BASE}/git/original?path=${encodeURIComponent(filepath)}`);
+      let origContent = '';
+      if (origRes.ok) {
+        const origData = await origRes.json();
+        origContent = origData.content ?? '';
+      }
+
+      // 2. Fetch current modified content (from openFiles or disk)
+      let modContent = '';
+      const existing = openFiles.find((f) => f.path === filepath);
+      if (existing) {
+        modContent = existing.content;
+      } else {
+        const fileRes = await fetch(`${API_BASE}/workspace/file?path=${encodeURIComponent(filepath)}`);
+        if (fileRes.ok) {
+          const fileData = await fileRes.json();
+          modContent = fileData.content ?? '';
+        }
+      }
+
+      setDiffView({
+        path: filepath,
+        original: origContent,
+        modified: modContent,
+      });
+    } catch (err) {
+      console.error('Failed to open diff view:', err);
+    }
+  }, [openFiles]);
+
+  const downloadWorkspaceZip = useCallback(() => {
+    const link = document.createElement('a');
+    link.href = `${API_BASE}/workspace/export`;
+    link.download = 'spark_workspace.zip';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, []);
+
   const openFile = useCallback(async (filepath) => {
+    setDiffView(null);
     const existing = openFiles.find((f) => f.path === filepath);
     if (existing) { setActiveTab(filepath); return; }
 
@@ -1063,6 +1168,14 @@ export default function App() {
           // 1. Objective 1.2: Real-time file sync
           if (event.type === 'fs_update') {
             fetchTree();
+            fetchGitStatus();
+            return;
+          }
+
+          // Phase 4: Git status update
+          if (event.type === 'git_update') {
+            fetchTree();
+            fetchGitStatus();
             return;
           }
 
@@ -1161,7 +1274,10 @@ export default function App() {
   // RENDER
   // ======================================================================
   return (
-    <div className="ide-shell">
+    <div
+      className={`ide-shell ${theme === 'high-contrast' ? 'theme-high-contrast' : ''}`}
+      data-theme={theme}
+    >
       {/* ======================== Title Bar ======================== */}
       <div className="ide-titlebar">
         <div className="spark-logo">
@@ -1172,6 +1288,14 @@ export default function App() {
           Multi-Agent Software Sandbox
         </span>
         <div style={{ flex: 1 }} />
+        <button
+          className={`theme-toggle-btn ${theme === 'high-contrast' ? 'active' : ''}`}
+          onClick={toggleTheme}
+          title={theme === 'high-contrast' ? 'Switch to Standard Dark theme' : 'Switch to High Contrast Dark theme'}
+        >
+          <Contrast size={13} />
+          <span className="theme-toggle-label">{theme === 'high-contrast' ? 'High Contrast' : 'Standard Dark'}</span>
+        </button>
         <button
           className="terminal-toggle-btn"
           onClick={() => setTerminalVisible((v) => !v)}
@@ -1189,46 +1313,85 @@ export default function App() {
       <div className="ide-body">
         {/* ---------- Left: File Explorer ---------- */}
         <div className="sidebar-explorer">
-          <div className="sidebar-header">
-            <span>Explorer</span>
-            <div style={{ display: 'flex', gap: 2 }}>
-              <button className="refresh-btn" onClick={() => createNewFile('')} title="New File">
-                <FilePlus size={13} />
-              </button>
-              <button className="refresh-btn" onClick={() => createNewFolder('')} title="New Folder">
-                <FolderPlus size={13} />
-              </button>
-              <button className="refresh-btn" onClick={fetchTree} title="Refresh">
-                <RefreshCw size={13} />
-              </button>
-            </div>
+          {/* View Switcher: Explorer vs Source Control */}
+          <div className="sidebar-view-tabs">
+            <button
+              className={`sidebar-tab-btn ${sidebarView === 'explorer' ? 'active' : ''}`}
+              onClick={() => setSidebarView('explorer')}
+              title="File Explorer"
+            >
+              <FolderOpen size={13} />
+              <span>Explorer</span>
+            </button>
+            <button
+              className={`sidebar-tab-btn ${sidebarView === 'source_control' ? 'active' : ''}`}
+              onClick={() => {
+                setSidebarView('source_control');
+                fetchGitStatus();
+              }}
+              title="Source Control"
+            >
+              <GitBranch size={13} />
+              <span>Source Control</span>
+              {gitChangesCount > 0 && (
+                <span className="sidebar-badge">{gitChangesCount}</span>
+              )}
+            </button>
           </div>
-          <div className="file-tree">
-            {treeLoading && (
-              <div style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: 12 }}>Loading…</div>
-            )}
-            {tree && tree.children?.map((child) => (
-              <FileTreeNode
-                key={child.name}
-                node={child}
-                depth={0}
-                parentPath=""
-                activeFile={activeTab}
-                onFileClick={openFile}
-                onContextMenu={handleTreeContextMenu}
-                onCreateFile={createNewFile}
-                onCreateFolder={createNewFolder}
-                onRename={renameItem}
-                onDelete={deleteItem}
-                onDownload={downloadFile}
-              />
-            ))}
-            {tree && (!tree.children || tree.children.length === 0) && (
-              <div style={{ padding: '20px 14px', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
-                Workspace is empty.<br />Use the chat to generate code.
+
+          {sidebarView === 'explorer' ? (
+            <>
+              <div className="sidebar-header">
+                <span>Explorer</span>
+                <div style={{ display: 'flex', gap: 2 }}>
+                  <button className="refresh-btn" onClick={() => createNewFile('')} title="New File">
+                    <FilePlus size={13} />
+                  </button>
+                  <button className="refresh-btn" onClick={() => createNewFolder('')} title="New Folder">
+                    <FolderPlus size={13} />
+                  </button>
+                  <button className="refresh-btn" onClick={downloadWorkspaceZip} title="Download Project (ZIP)">
+                    <Download size={13} />
+                  </button>
+                  <button className="refresh-btn" onClick={fetchTree} title="Refresh">
+                    <RefreshCw size={13} />
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
+              <div className="file-tree">
+                {treeLoading && (
+                  <div style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: 12 }}>Loading…</div>
+                )}
+                {tree && tree.children?.map((child) => (
+                  <FileTreeNode
+                    key={child.name}
+                    node={child}
+                    depth={0}
+                    parentPath=""
+                    activeFile={activeTab}
+                    onFileClick={openFile}
+                    onContextMenu={handleTreeContextMenu}
+                    onCreateFile={createNewFile}
+                    onCreateFolder={createNewFolder}
+                    onRename={renameItem}
+                    onDelete={deleteItem}
+                    onDownload={downloadFile}
+                  />
+                ))}
+                {tree && (!tree.children || tree.children.length === 0) && (
+                  <div style={{ padding: '20px 14px', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
+                    Workspace is empty.<br />Use the chat to generate code.
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <SourceControl
+              onFileClick={openDiffView}
+              activeDiffPath={diffView?.path}
+              onStatusUpdate={setGitChangesCount}
+            />
+          )}
         </div>
 
         {/* ---------- Center: Editor + Terminal ---------- */}
@@ -1239,8 +1402,11 @@ export default function App() {
                 {openFiles.map((f) => (
                   <div
                     key={f.path}
-                    className={`editor-tab ${f.path === activeTab ? 'active' : ''}`}
-                    onClick={() => setActiveTab(f.path)}
+                    className={`editor-tab ${f.path === activeTab && !diffView ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveTab(f.path);
+                      setDiffView(null);
+                    }}
                   >
                     <FileCode2 size={13} style={{ opacity: 0.6 }} />
                     <span>{f.dirty && '● '}{f.path.split('/').pop()}</span>
@@ -1281,7 +1447,7 @@ export default function App() {
                 <button
                   className={`editor-run-btn ${isRunning ? 'running' : ''}`}
                   onClick={isRunning ? handleStop : handleRun}
-                  disabled={!activeFile}
+                  disabled={!activeFile || !!diffView}
                   title={
                     activeFile
                       ? (isRunning ? `Stop running ${activeFile.path}` : `Run ${activeFile.path} in terminal`)
@@ -1303,11 +1469,60 @@ export default function App() {
               </div>
             </div>
 
-            {activeFile ? (
+            {diffView ? (
+              <div className="diff-editor-container">
+                <div className="diff-header-bar">
+                  <div className="diff-title">
+                    <GitCompare size={14} style={{ color: 'var(--accent-blue)' }} />
+                    <span className="diff-filename">{diffView.path}</span>
+                    <span className="diff-badge">HEAD ↔ Working Copy</span>
+                  </div>
+                  <div className="diff-actions">
+                    <button
+                      className="diff-action-btn"
+                      onClick={() => {
+                        const target = diffView.path;
+                        setDiffView(null);
+                        openFile(target);
+                      }}
+                      title="Open file in regular editor"
+                    >
+                      <Code2 size={13} />
+                      <span>Edit File</span>
+                    </button>
+                    <button
+                      className="diff-close-btn"
+                      onClick={() => setDiffView(null)}
+                      title="Close Diff"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+                <div className="diff-monaco-wrapper">
+                  <DiffEditor
+                    theme={theme === 'high-contrast' ? 'hc-black' : 'vs-dark'}
+                    original={diffView.original}
+                    modified={diffView.modified}
+                    language={langFromPath(diffView.path)}
+                    options={{
+                      fontSize: 13,
+                      fontFamily: "'JetBrains Mono', 'Menlo', monospace",
+                      fontLigatures: true,
+                      readOnly: true,
+                      renderSideBySide: true,
+                      automaticLayout: true,
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : activeFile ? (
               <div className="editor-content-split">
                 <div className={`monaco-wrapper ${showLivePreview && previewInfo ? 'half-width' : ''}`}>
                   <Editor
-                    theme="vs-dark"
+                    theme={theme === 'high-contrast' ? 'hc-black' : 'vs-dark'}
                     language={langFromPath(activeFile.path)}
                     value={activeFile.content}
                     onChange={onEditorChange}
@@ -1397,6 +1612,7 @@ export default function App() {
               isRunning={isRunning}
               runningFile={runningFile}
               previewInfo={previewInfo}
+              theme={theme}
             />
           </div>
         </div>
