@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
+import json
 from contextlib import asynccontextmanager
 import logging
 import os
@@ -270,6 +271,9 @@ app.add_middleware(
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+if WORKSPACE_DIR.exists():
+    app.mount("/preview", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="preview")
 
 
 @app.get("/", response_class=HTMLResponse)

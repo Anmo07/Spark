@@ -11,7 +11,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import httpx
 
@@ -229,7 +229,7 @@ class AgentDispatcher:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self.on_file_write = on_file_write
         # Track retry attempts per root task
-        self.review_retries: Dict[int, int] = {}
+        self.review_retries: Dict[Union[int, str], int] = {}
         self.circuit_breaker_limit = 2
 
     def write_workspace_file(self, relative_path: str, content: str) -> Path:

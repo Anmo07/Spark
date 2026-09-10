@@ -206,16 +206,154 @@ html, body, #root {
   min-height: 0;
 }
 
-.editor-tabs {
+.editor-tabs-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-default);
   min-height: 36px;
+  padding-right: 10px;
+  gap: 8px;
+}
+
+.editor-tabs {
+  display: flex;
+  align-items: center;
   overflow-x: auto;
+  flex: 1;
+  min-height: 36px;
 }
 
 .editor-tabs::-webkit-scrollbar { height: 0; }
+
+.editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.editor-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  height: 26px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.editor-run-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.28);
+  border-color: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+  transform: translateY(-1px);
+}
+
+.editor-run-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.editor-run-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--text-muted);
+}
+
+.editor-run-btn.running {
+  background: rgba(244, 63, 94, 0.16);
+  border-color: rgba(244, 63, 94, 0.45);
+  color: #fb7185;
+}
+
+.editor-run-btn.running:hover {
+  background: rgba(244, 63, 94, 0.28);
+  border-color: #f43f5e;
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.3);
+}
+
+.preview-pill-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.editor-preview-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  height: 26px;
+  border-radius: 5px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.editor-preview-link:hover {
+  background: rgba(59, 130, 246, 0.24);
+  border-color: #3b82f6;
+  color: #93c5fd;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.25);
+  transform: translateY(-1px);
+}
+
+.preview-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  animation: pulse-dot 1.8s infinite;
+}
+
+@keyframes pulse-dot {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.preview-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  height: 26px;
+  border-radius: 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preview-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.preview-toggle-btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
 
 .editor-tab {
   display: flex;
@@ -271,6 +409,93 @@ html, body, #root {
 
 .monaco-wrapper { flex: 1; overflow: hidden; }
 
+/* Split editor view when Live Preview is open */
+.editor-content-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.monaco-wrapper.half-width {
+  flex: 1;
+  border-right: 1px solid var(--border-default);
+}
+
+.live-preview-pane {
+  flex: 1;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  height: 100%;
+}
+
+.live-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  gap: 6px;
+}
+
+.preview-address-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: var(--text-muted);
+}
+
+.preview-address-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  outline: none;
+}
+
+.preview-refresh-btn, .preview-external-btn, .preview-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.12s ease;
+  text-decoration: none;
+}
+
+.preview-refresh-btn:hover, .preview-external-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.preview-close-btn:hover {
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.15);
+}
+
+.live-preview-iframe {
+  flex: 1;
+  border: none;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
 /* ========================== Terminal Pane =============================== */
 .terminal-resize-handle {
   height: 4px;
@@ -293,8 +518,8 @@ html, body, #root {
 .terminal-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  justify-content: space-between;
+  padding: 5px 12px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -303,6 +528,56 @@ html, body, #root {
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
+}
+
+.terminal-header-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.terminal-running-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.terminal-running-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 5px #10b981;
+  animation: pulse-dot 1.8s infinite;
+}
+
+.terminal-running-indicator code {
+  color: #34d399;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.terminal-preview-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #60a5fa;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.terminal-preview-link:hover {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.22);
 }
 
 .terminal-container {

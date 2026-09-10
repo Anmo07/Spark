@@ -1,0 +1,20 @@
+{
+  "prompt": "Build app",
+  "plan": {
+    "plan_overview": "Revised via API",
+    "steps": [
+      {
+        "step_number": 1,
+        "assigned_role": "coder",
+        "instructions": "Do Y"
+      }
+    ],
+    "estimated_files": [
+      "y.py"
+    ]
+  },
+  "status": "approved",
+  "feedback_history": [
+    "Change to Y"
+  ]
+}

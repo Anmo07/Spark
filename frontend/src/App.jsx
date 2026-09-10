@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import Editor from '@monaco-editor/react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -28,6 +28,12 @@ import {
   Activity,
   CheckCircle2,
   ListChecks,
+  Play,
+  Square,
+  ExternalLink,
+  Globe,
+  Eye,
+  RotateCw,
 } from 'lucide-react';
 import './App.css';
 
@@ -458,105 +464,172 @@ function ChatMessage({ msg, onOpenFile, onApproveRoadmap, onFeedbackRoadmap, dis
    TerminalPane — xterm.js panel
    ========================================================================= */
 
-function TerminalPane({ visible }) {
+const TerminalPane = forwardRef(function TerminalPane(
+  { visible, isRunning, runningFile, previewInfo },
+  ref
+) {
   const containerRef = useRef(null);
   const termRef = useRef(null);
   const fitAddonRef = useRef(null);
   const wsRef = useRef(null);
+  const pendingCommandsRef = useRef([]);
+
+  useImperativeHandle(ref, () => ({
+    sendCommand: (cmd) => {
+      const formatted = cmd.trim() + '\r';
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(formatted);
+      } else {
+        pendingCommandsRef.current.push(formatted);
+      }
+      termRef.current?.focus();
+    },
+    sendRaw: (data) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(data);
+      }
+    },
+    stopProcess: () => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send('\x03');
+      }
+    },
+    focus: () => {
+      termRef.current?.focus();
+    },
+    fit: () => {
+      fitAddonRef.current?.fit();
+    },
+  }));
 
   useEffect(() => {
-    if (!visible || !containerRef.current) return;
+    if (!containerRef.current) return;
 
-    // Create terminal only once
-    if (!termRef.current) {
-      const term = new Terminal({
-        cursorBlink: true,
-        fontSize: 13,
-        fontFamily: "'JetBrains Mono', 'Menlo', monospace",
-        theme: {
-          background: '#0a0a0f',
-          foreground: '#e4e4ed',
-          cursor: '#3b82f6',
-          selectionBackground: 'rgba(59, 130, 246, 0.3)',
-          black: '#1e1e28',
-          red: '#f43f5e',
-          green: '#10b981',
-          yellow: '#f59e0b',
-          blue: '#3b82f6',
-          magenta: '#8b5cf6',
-          cyan: '#06b6d4',
-          white: '#e4e4ed',
-        },
-        scrollback: 5000,
-        allowProposedApi: true,
-      });
-
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
-      term.open(containerRef.current);
-      fitAddon.fit();
-
-      termRef.current = term;
-      fitAddonRef.current = fitAddon;
-
-      // Connect WebSocket
-      const ws = new WebSocket(WS_TERMINAL_URL);
-      wsRef.current = ws;
-
-      ws.binaryType = 'arraybuffer';
-      ws.onopen = () => {
-        // Send initial size
-        const dims = fitAddon.proposeDimensions();
-        if (dims) {
-          ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
-        }
-      };
-      ws.onmessage = (evt) => {
-        if (evt.data instanceof ArrayBuffer) {
-          term.write(new Uint8Array(evt.data));
-        } else {
-          term.write(evt.data);
-        }
-      };
-      ws.onclose = () => term.write('\r\n\x1b[31m[Terminal disconnected]\x1b[0m\r\n');
-
-      term.onData((data) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(data);
-        }
-      });
-
-      // Handle resize
-      const resizeObserver = new ResizeObserver(() => {
-        fitAddon.fit();
-        const dims = fitAddon.proposeDimensions();
-        if (dims && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
-        }
-      });
-      resizeObserver.observe(containerRef.current);
-
-      return () => {
-        resizeObserver.disconnect();
-      };
-    } else {
-      // Just re-fit when toggling visible
-      fitAddonRef.current?.fit();
+    // If terminal is already initialized, just re-fit on visibility change
+    if (termRef.current) {
+      if (visible) {
+        setTimeout(() => {
+          fitAddonRef.current?.fit();
+          termRef.current?.focus();
+        }, 80);
+      }
+      return;
     }
-  }, [visible]);
 
-  if (!visible) return null;
+    const term = new Terminal({
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'Menlo', monospace",
+      theme: {
+        background: '#0a0a0f',
+        foreground: '#e4e4ed',
+        cursor: '#3b82f6',
+        selectionBackground: 'rgba(59, 130, 246, 0.3)',
+        black: '#1e1e28',
+        red: '#f43f5e',
+        green: '#10b981',
+        yellow: '#f59e0b',
+        blue: '#3b82f6',
+        magenta: '#8b5cf6',
+        cyan: '#06b6d4',
+        white: '#e4e4ed',
+      },
+      scrollback: 5000,
+      allowProposedApi: true,
+    });
+
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(containerRef.current);
+    fitAddon.fit();
+
+    termRef.current = term;
+    fitAddonRef.current = fitAddon;
+
+    // Connect WebSocket
+    const ws = new WebSocket(WS_TERMINAL_URL);
+    wsRef.current = ws;
+
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {
+      const dims = fitAddon.proposeDimensions();
+      if (dims) {
+        ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
+      }
+      // Flush any queued commands
+      if (pendingCommandsRef.current.length > 0) {
+        const queued = [...pendingCommandsRef.current];
+        pendingCommandsRef.current = [];
+        setTimeout(() => {
+          queued.forEach((c) => ws.send(c));
+        }, 300);
+      }
+    };
+
+    ws.onmessage = (evt) => {
+      if (evt.data instanceof ArrayBuffer) {
+        term.write(new Uint8Array(evt.data));
+      } else {
+        term.write(evt.data);
+      }
+    };
+
+    ws.onclose = () => term.write('\r\n\x1b[31m[Terminal disconnected]\x1b[0m\r\n');
+
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    });
+
+    // Handle resize
+    const resizeObserver = new ResizeObserver(() => {
+      fitAddon.fit();
+      const dims = fitAddon.proposeDimensions();
+      if (dims && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [visible]);
 
   return (
     <div className="terminal-pane">
       <div className="terminal-header">
-        <TerminalSquare size={13} />
-        <span>Terminal</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <TerminalSquare size={13} />
+          <span>Terminal</span>
+        </div>
+        {isRunning && runningFile && (
+          <div className="terminal-header-status">
+            <span className="terminal-running-indicator">
+              <span className="terminal-running-dot" />
+              Running: <code>{runningFile}</code>
+            </span>
+            {previewInfo && (
+              <a
+                href={previewInfo.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="terminal-preview-link"
+                title={`Open preview: ${previewInfo.url}`}
+              >
+                <Globe size={11} />
+                <span>{previewInfo.label}</span>
+                <ExternalLink size={10} />
+              </a>
+            )}
+          </div>
+        )}
       </div>
       <div className="terminal-container" ref={containerRef} />
     </div>
   );
-}
+});
 
 /* =========================================================================
    App — Main IDE
@@ -588,6 +661,120 @@ export default function App() {
 
   // --- Context menu state ---
   const [ctxMenu, setCtxMenu] = useState(null);
+
+  // --- Runner & Preview state ---
+  const [isRunning, setIsRunning] = useState(false);
+  const [runningFile, setRunningFile] = useState(null);
+  const [previewInfo, setPreviewInfo] = useState(null);
+  const [showLivePreview, setShowLivePreview] = useState(false);
+  const terminalRef = useRef(null);
+
+  const getRunConfigForFile = useCallback((file) => {
+    if (!file) return null;
+    const path = file.path;
+    const content = file.content || '';
+    const ext = path.split('.').pop()?.toLowerCase();
+
+    if (ext === 'html' || ext === 'htm') {
+      const port = 3000;
+      return {
+        type: 'web',
+        cmd: `pkill -f "http.server ${port}" 2>/dev/null; python3 -m http.server ${port}`,
+        port,
+        url: `http://localhost:${port}/${path}`,
+        label: `localhost:${port}/${path}`,
+      };
+    }
+
+    if (ext === 'py') {
+      const portMatch =
+        content.match(/(?:port|PORT)\s*[=:]\s*(\d{2,5})/) ||
+        content.match(/localhost:(\d{2,5})/) ||
+        content.match(/127\.0\.0\.1:(\d{2,5})/);
+      const isServer = /uvicorn|flask|fastapi|http\.server|socketserver|app\.run/i.test(content);
+      const port = portMatch ? parseInt(portMatch[1], 10) : (isServer ? 5000 : null);
+
+      return {
+        type: port ? 'web' : 'script',
+        cmd: `python3 "${path}"`,
+        port,
+        url: port ? `http://localhost:${port}` : null,
+        label: port ? `localhost:${port}` : null,
+      };
+    }
+
+    if (ext === 'js' || ext === 'mjs' || ext === 'ts' || ext === 'jsx' || ext === 'tsx') {
+      const portMatch =
+        content.match(/(?:port|PORT)\s*[=:]\s*(\d{2,5})/) ||
+        content.match(/localhost:(\d{2,5})/);
+      const isServer = /express|listen|createServer|fastify|koa/i.test(content);
+      const port = portMatch ? parseInt(portMatch[1], 10) : (isServer ? 3000 : null);
+      return {
+        type: port ? 'web' : 'script',
+        cmd: `node "${path}"`,
+        port,
+        url: port ? `http://localhost:${port}` : null,
+        label: port ? `localhost:${port}` : null,
+      };
+    }
+
+    if (ext === 'sh') {
+      return {
+        type: 'script',
+        cmd: `bash "${path}"`,
+        port: null,
+        url: null,
+        label: null,
+      };
+    }
+
+    return {
+      type: 'script',
+      cmd: `echo "Executed ${path}"`,
+      port: null,
+      url: null,
+      label: null,
+    };
+  }, []);
+
+  const handleRun = useCallback(() => {
+    const file = openFiles.find((f) => f.path === activeTab);
+    if (!file) return;
+
+    const config = getRunConfigForFile(file);
+    if (!config) return;
+
+    // Ensure terminal is visible so user sees the process running in the terminal
+    setTerminalVisible(true);
+
+    // Send command to the terminal process
+    terminalRef.current?.sendCommand(config.cmd);
+
+    setIsRunning(true);
+    setRunningFile(file.path);
+
+    if (config.url) {
+      setPreviewInfo({
+        url: config.url,
+        label: config.label,
+        port: config.port,
+        filePath: file.path,
+      });
+      setShowLivePreview(true);
+    } else {
+      setPreviewInfo(null);
+      setShowLivePreview(false);
+    }
+  }, [openFiles, activeTab, getRunConfigForFile]);
+
+  const handleStop = useCallback(() => {
+    terminalRef.current?.stopProcess();
+    if (previewInfo?.port === 3000) {
+      terminalRef.current?.sendCommand('pkill -f "http.server 3000" 2>/dev/null');
+    }
+    setIsRunning(false);
+    setRunningFile(null);
+  }, [previewInfo]);
 
   // ==========================
   // Fetch file tree
@@ -1047,44 +1234,146 @@ export default function App() {
         {/* ---------- Center: Editor + Terminal ---------- */}
         <div className="editor-terminal-area">
           <div className="editor-area">
-            <div className="editor-tabs">
-              {openFiles.map((f) => (
-                <div
-                  key={f.path}
-                  className={`editor-tab ${f.path === activeTab ? 'active' : ''}`}
-                  onClick={() => setActiveTab(f.path)}
+            <div className="editor-tabs-bar">
+              <div className="editor-tabs">
+                {openFiles.map((f) => (
+                  <div
+                    key={f.path}
+                    className={`editor-tab ${f.path === activeTab ? 'active' : ''}`}
+                    onClick={() => setActiveTab(f.path)}
+                  >
+                    <FileCode2 size={13} style={{ opacity: 0.6 }} />
+                    <span>{f.dirty && '● '}{f.path.split('/').pop()}</span>
+                    <button className="close-btn" onClick={(e) => closeTab(f.path, e)}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Marked Location: Run Button & Localhost Preview Link */}
+              <div className="editor-toolbar-actions">
+                {previewInfo && (
+                  <div className="preview-pill-group">
+                    <a
+                      href={previewInfo.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="editor-preview-link"
+                      title={`Open preview in new tab: ${previewInfo.url}`}
+                    >
+                      <span className="preview-live-dot" />
+                      <Globe size={13} />
+                      <span className="preview-url-text">{previewInfo.label}</span>
+                      <ExternalLink size={12} />
+                    </a>
+                    <button
+                      className={`preview-toggle-btn ${showLivePreview ? 'active' : ''}`}
+                      onClick={() => setShowLivePreview((v) => !v)}
+                      title={showLivePreview ? 'Hide in-editor live preview' : 'Show in-editor live preview'}
+                    >
+                      <Eye size={13} />
+                      <span>{showLivePreview ? 'Code' : 'Preview'}</span>
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  className={`editor-run-btn ${isRunning ? 'running' : ''}`}
+                  onClick={isRunning ? handleStop : handleRun}
+                  disabled={!activeFile}
+                  title={
+                    activeFile
+                      ? (isRunning ? `Stop running ${activeFile.path}` : `Run ${activeFile.path} in terminal`)
+                      : 'Open a file to run'
+                  }
                 >
-                  <FileCode2 size={13} style={{ opacity: 0.6 }} />
-                  <span>{f.dirty && '● '}{f.path.split('/').pop()}</span>
-                  <button className="close-btn" onClick={(e) => closeTab(f.path, e)}>
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
+                  {isRunning ? (
+                    <>
+                      <Square size={12} fill="currentColor" />
+                      <span>Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={12} fill="currentColor" />
+                      <span>Run</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {activeFile ? (
-              <div className="monaco-wrapper">
-                <Editor
-                  theme="vs-dark"
-                  language={langFromPath(activeFile.path)}
-                  value={activeFile.content}
-                  onChange={onEditorChange}
-                  options={{
-                    fontSize: 13,
-                    fontFamily: "'JetBrains Mono', 'Menlo', monospace",
-                    fontLigatures: true,
-                    minimap: { enabled: true, scale: 1 },
-                    smoothScrolling: true,
-                    cursorBlinking: 'smooth',
-                    cursorSmoothCaretAnimation: 'on',
-                    padding: { top: 12 },
-                    scrollBeyondLastLine: false,
-                    renderLineHighlight: 'all',
-                    bracketPairColorization: { enabled: true },
-                    automaticLayout: true,
-                  }}
-                />
+              <div className="editor-content-split">
+                <div className={`monaco-wrapper ${showLivePreview && previewInfo ? 'half-width' : ''}`}>
+                  <Editor
+                    theme="vs-dark"
+                    language={langFromPath(activeFile.path)}
+                    value={activeFile.content}
+                    onChange={onEditorChange}
+                    options={{
+                      fontSize: 13,
+                      fontFamily: "'JetBrains Mono', 'Menlo', monospace",
+                      fontLigatures: true,
+                      minimap: { enabled: true, scale: 1 },
+                      smoothScrolling: true,
+                      cursorBlinking: 'smooth',
+                      cursorSmoothCaretAnimation: 'on',
+                      padding: { top: 12 },
+                      scrollBeyondLastLine: false,
+                      renderLineHighlight: 'all',
+                      bracketPairColorization: { enabled: true },
+                      automaticLayout: true,
+                    }}
+                  />
+                </div>
+                {showLivePreview && previewInfo && (
+                  <div className="live-preview-pane">
+                    <div className="live-preview-header">
+                      <div className="preview-address-bar">
+                        <Globe size={13} />
+                        <input
+                          type="text"
+                          readOnly
+                          value={previewInfo.url}
+                          className="preview-address-input"
+                        />
+                        <button
+                          className="preview-refresh-btn"
+                          onClick={() => {
+                            const iframe = document.getElementById('spark-preview-iframe');
+                            if (iframe) iframe.src = iframe.src;
+                          }}
+                          title="Reload preview"
+                        >
+                          <RotateCw size={12} />
+                        </button>
+                        <a
+                          href={previewInfo.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="preview-external-btn"
+                          title="Open preview in new window"
+                        >
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                      <button
+                        className="preview-close-btn"
+                        onClick={() => setShowLivePreview(false)}
+                        title="Close preview pane"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <iframe
+                      id="spark-preview-iframe"
+                      title="Spark Live Preview"
+                      src={previewInfo.url}
+                      className="live-preview-iframe"
+                    />
+                  </div>
+                )}
               </div>
             ) : (
               <div className="editor-empty">
@@ -1102,7 +1391,13 @@ export default function App() {
 
           {/* Terminal */}
           <div style={{ height: terminalVisible ? terminalHeight : 0, overflow: 'hidden' }}>
-            <TerminalPane visible={terminalVisible} />
+            <TerminalPane
+              ref={terminalRef}
+              visible={terminalVisible}
+              isRunning={isRunning}
+              runningFile={runningFile}
+              previewInfo={previewInfo}
+            />
           </div>
         </div>
 
