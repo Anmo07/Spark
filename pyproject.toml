@@ -1,0 +1,17 @@
+[project]
+name = "spark"
+version = "0.2.0"
+requires-python = ">=3.9"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = [
+    ".venv/lib/python3.9/site-packages"
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+    ".venv/lib/python3.9/site-packages"
+]

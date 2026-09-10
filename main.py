@@ -3,7 +3,8 @@
 Implements the reactive Blackboard architecture:
 - Global asyncio.Queue acting as the non-blocking internal event bus.
 - POST /task endpoint for ingesting user prompts and writing to SQLite event_log.
-- Background worker task listening on the queue, logging events to terminal.
+- Background worker task listening on the queue, driving the reactive multi-agent loop:
+    pending_supervisor -> pending_designer -> pending_coder -> pending_reviewer -> task_completed
 - Native WebSocket streaming (WS /ws/events) for broadcasting event updates to UI.
 - FTS5 full-text search (GET /search?q=...) for timeline replay querying.
 - Single-page dashboard served at GET /.
@@ -21,6 +22,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from agents import AgentDispatcher
 from database import (
     get_event,
     get_recent_events,
@@ -41,6 +43,9 @@ event_bus: asyncio.Queue[int] = asyncio.Queue()
 
 # Reference to the background queue worker task
 worker_task: Optional[asyncio.Task] = None
+
+# Autonomous Agent Dispatcher
+dispatcher = AgentDispatcher()
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -75,24 +80,41 @@ manager = ConnectionManager()
 
 
 async def queue_worker() -> None:
-    """Background worker that continuously dequeues and processes events from event_bus."""
+    """Background worker continuously popping events and executing reactive agent handoffs."""
     logger.info("Event bus queue worker started.")
     while True:
         try:
             event_id = await event_bus.get()
             event = await get_event(event_id)
             if event:
-                # Terminal output for Phase 1 inspection
+                # Terminal output for real-time monitoring
                 print(
                     f"\n[EVENT BUS WORKER] >>> Popped Event #{event['id']} <<<\n"
                     f"  Role   : {event['agent_role']}\n"
                     f"  Status : {event['status']}\n"
-                    f"  Data   : {event['data']}\n",
+                    f"  Data   : {str(event['data'])[:120]}...\n",
                     flush=True,
                 )
 
                 # Broadcast to all connected WebSocket UI clients
                 await manager.broadcast(event)
+
+                # Reactive Autonomous Agent Dispatch
+                next_action = await dispatcher.process_event(event)
+                if next_action:
+                    next_id = await insert_event(
+                        agent_role=next_action["agent_role"],
+                        status=next_action["status"],
+                        data=next_action["data"],
+                    )
+                    await event_bus.put(next_id)
+                    logger.info(
+                        "Autonomous Transition: Event #%d generated next event #%d (%s: %s)",
+                        event["id"],
+                        next_id,
+                        next_action["agent_role"],
+                        next_action["status"],
+                    )
             else:
                 logger.warning("Event ID %d popped from queue but not found in database", event_id)
 
@@ -101,7 +123,7 @@ async def queue_worker() -> None:
             logger.info("Event bus queue worker cancelled.")
             break
         except Exception as exc:
-            logger.error("Error processing event from queue: %s", exc, exc_info=True)
+            logger.error("Error in queue_worker: %s", exc, exc_info=True)
 
 
 @asynccontextmanager
@@ -124,7 +146,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Multi-Agent Software Sandbox",
     description="Reactive blackboard and event bus for autonomous multi-agent software development",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -148,6 +170,7 @@ async def health_check() -> Dict[str, Any]:
         "status": "healthy",
         "queue_size": event_bus.qsize(),
         "connected_ws_clients": len(manager.active_connections),
+        "model": dispatcher.llm.model,
     }
 
 
@@ -222,7 +245,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await manager.connect(websocket)
     try:
         while True:
-            # Receive client ping or keep-alive message
             _ = await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)

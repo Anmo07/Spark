@@ -1,587 +1,338 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Multi-Agent Software Sandbox</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg-primary: #090d16;
-      --bg-surface: #111827;
-      --bg-surface-elevated: #1a2234;
-      --border-subtle: #1e293b;
-      --border-active: #3b82f6;
-      --text-primary: #f1f5f9;
-      --text-muted: #94a3b8;
-      --accent-blue: #3b82f6;
-      --accent-purple: #8b5cf6;
-      --accent-green: #10b981;
-      --accent-amber: #f59e0b;
-      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      background-color: var(--bg-primary);
-      color: var(--text-primary);
-      font-family: var(--font-sans);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    header {
-      background: rgba(17, 24, 39, 0.85);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border-subtle);
-      padding: 1rem 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .brand-icon {
-      width: 28px;
-      height: 28px;
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 14px;
-      color: white;
-    }
-
-    .brand-title {
-      font-size: 1.125rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.35rem 0.75rem;
-      border-radius: 9999px;
-      background: var(--bg-surface-elevated);
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      border: 1px solid var(--border-subtle);
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent-amber);
-      transition: background 0.3s;
-    }
-
-    .status-dot.connected {
-      background: var(--accent-green);
-      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
-    }
-
-    main {
-      flex: 1;
-      max-width: 1400px;
-      margin: 0 auto;
-      width: 100%;
-      padding: 2rem;
-      display: grid;
-      grid-template-columns: 420px 1fr;
-      gap: 2rem;
-    }
-
-    @media (max-width: 960px) {
-      main {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .panel {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: 12px;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .panel-header {
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid var(--border-subtle);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .panel-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-    }
-
-    .panel-body {
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1.25rem;
-    }
-
-    label {
-      display: block;
-      font-size: 0.825rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
-    }
-
-    textarea, input[type="text"] {
-      width: 100%;
-      background: var(--bg-surface-elevated);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      color: var(--text-primary);
-      padding: 0.75rem 1rem;
-      font-family: inherit;
-      font-size: 0.875rem;
-      transition: border-color 0.2s;
-    }
-
-    textarea:focus, input[type="text"]:focus {
-      outline: none;
-      border-color: var(--border-active);
-    }
-
-    textarea {
-      resize: vertical;
-      min-height: 110px;
-    }
-
-    button {
-      cursor: pointer;
-      font-family: inherit;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      padding: 0.75rem 1.25rem;
-      font-size: 0.875rem;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      transition: all 0.2s;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--accent-blue), #2563eb);
-      color: white;
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
-    }
-
-    .btn-primary:hover {
-      opacity: 0.95;
-      transform: translateY(-1px);
-    }
-
-    .search-box-wrap {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .btn-secondary {
-      background: var(--bg-surface-elevated);
-      color: var(--text-primary);
-      border: 1px solid var(--border-subtle);
-    }
-
-    .btn-secondary:hover {
-      border-color: var(--text-muted);
-    }
-
-    /* Event Timeline Stream */
-    .timeline-container {
-      flex: 1;
-      overflow-y: auto;
-      max-height: calc(100vh - 260px);
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-
-    .event-card {
-      background: var(--bg-surface-elevated);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 1rem;
-      transition: border-color 0.2s, transform 0.2s;
-      animation: slideIn 0.25s ease-out;
-    }
-
-    @keyframes slideIn {
-      from {
-        opacity: 0;
-        transform: translateY(-8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .event-card:hover {
-      border-color: rgba(59, 130, 246, 0.4);
-    }
-
-    .event-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.5rem;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .badge-role-user { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
-    .badge-role-supervisor { background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.3); }
-    .badge-role-coder { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .badge-role-reviewer { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
-
-    .event-time {
-      font-family: var(--font-mono);
-      font-size: 0.725rem;
-      color: var(--text-muted);
-    }
-
-    .event-status {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
-    }
-
-    .event-payload {
-      background: #0d1117;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 6px;
-      padding: 0.75rem;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      white-space: pre-wrap;
-      word-break: break-all;
-      color: #cbd5e1;
-      max-height: 180px;
-      overflow-y: auto;
-    }
-
-    .empty-state {
-      text-align: center;
-      color: var(--text-muted);
-      padding: 3rem 1rem;
-      font-size: 0.875rem;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Sandbox Console</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Highlight.js for JSON/Code formatting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        // Custom IDE-style Dark Theme
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#0e0e11',
+                        panel: '#18181b',
+                        border: '#27272a'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Menlo', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0e0e11; color: #f4f4f5; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Sleek scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+    </style>
 </head>
-<body>
-
-  <header>
-    <div class="brand">
-      <div class="brand-icon">S</div>
-      <div>
-        <div class="brand-title">Multi-Agent Software Sandbox</div>
-        <div style="font-size: 0.75rem; color: var(--text-muted);">Reactive Blackboard & Event Bus</div>
-      </div>
-    </div>
-    <div class="status-pill">
-      <span class="status-dot" id="ws-dot"></span>
-      <span id="ws-status">Connecting WebSocket...</span>
-    </div>
-  </header>
-
-  <main>
-    <!-- Left Column: Controls & Search -->
-    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-      <!-- Task Submission -->
-      <section class="panel">
-        <div class="panel-header">
-          <span class="panel-title">Dispatch New Task</span>
-        </div>
-        <div class="panel-body">
-          <form id="task-form">
-            <label for="prompt-input">Agent Goal / Directive</label>
-            <textarea id="prompt-input" placeholder="e.g. Build an asynchronous memory cache with TTL eviction..." required></textarea>
-            <div style="margin-top: 1rem;">
-              <button type="submit" class="btn-primary" id="btn-submit">
-                Enqueue Task (POST /task)
-              </button>
+<body class="h-screen flex flex-col overflow-hidden">
+    <!-- Top Navigation Bar -->
+    <header class="h-14 border-b border-border bg-panel flex items-center justify-between px-6 shrink-0 z-20">
+        <div class="flex items-center gap-3">
+            <div class="p-1.5 bg-zinc-800 text-zinc-300 rounded border border-zinc-700 shadow-sm">
+                <i data-lucide="cpu" class="w-5 h-5"></i>
             </div>
-          </form>
+            <h1 class="font-semibold tracking-tight text-sm uppercase text-zinc-200">Local Multi-Agent Sandbox</h1>
         </div>
-      </section>
+        <div class="flex items-center gap-3 text-sm">
+            <div id="ws-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 transition-colors">
+                <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse" id="ws-indicator"></div>
+                <span id="ws-text" class="font-medium text-xs tracking-wide">Connecting...</span>
+            </div>
+        </div>
+    </header>
 
-      <!-- FTS5 Search Replay Engine -->
-      <section class="panel">
-        <div class="panel-header">
-          <span class="panel-title">FTS5 Timeline Search</span>
-          <span style="font-size: 0.75rem; color: var(--accent-blue); font-family: var(--font-mono);" id="search-count"></span>
-        </div>
-        <div class="panel-body">
-          <label for="search-input">Search Blackboard History</label>
-          <div class="search-box-wrap">
-            <input type="text" id="search-input" placeholder="Search keywords (e.g. cache, supervisor)...">
-            <button type="button" class="btn-secondary" id="btn-search">Search</button>
-            <button type="button" class="btn-secondary" id="btn-reset">Reset</button>
-          </div>
-          <div style="font-size: 0.75rem; color: var(--text-muted);">
-            Instant full-text query across all historical action data powered by SQLite FTS5.
-          </div>
-        </div>
-      </section>
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Control Sidebar -->
+        <aside class="w-[340px] border-r border-border bg-panel/50 p-5 flex flex-col gap-8 shrink-0 overflow-y-auto z-10 shadow-xl">
+            
+            <!-- Dispatch Task Section -->
+            <div class="flex flex-col gap-3">
+                <div class="flex items-center gap-2 text-zinc-400 pb-2 border-b border-border">
+                    <i data-lucide="zap" class="w-4 h-4"></i>
+                    <h2 class="text-xs font-semibold uppercase tracking-wider">Dispatch Task</h2>
+                </div>
+                <textarea id="task-input" rows="4" class="w-full bg-dark border border-border rounded-lg p-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all resize-none shadow-inner" placeholder="e.g. Build an asynchronous memory cache..."></textarea>
+                <button id="dispatch-btn" class="w-full bg-zinc-100 hover:bg-white text-zinc-900 font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-[0.98] shadow-sm cursor-pointer">
+                    <i data-lucide="play" class="w-4 h-4"></i>
+                    Enqueue Task
+                </button>
+            </div>
+
+            <!-- FTS5 Timeline Search -->
+            <div class="flex flex-col gap-3">
+                <div class="flex items-center gap-2 text-zinc-400 pb-2 border-b border-border">
+                    <i data-lucide="search" class="w-4 h-4"></i>
+                    <h2 class="text-xs font-semibold uppercase tracking-wider">Timeline Search</h2>
+                </div>
+                <div class="relative group">
+                    <i data-lucide="hash" class="w-4 h-4 absolute left-3 top-3 text-zinc-500 group-focus-within:text-purple-400 transition-colors"></i>
+                    <input type="text" id="search-input" class="w-full bg-dark border border-border rounded-lg py-2.5 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all shadow-inner" placeholder="Query SQLite FTS5...">
+                </div>
+                <div class="flex gap-2 text-sm mt-1">
+                    <button id="search-btn" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2 rounded-lg transition-colors border border-zinc-700 shadow-sm cursor-pointer">Search</button>
+                    <button id="reset-btn" class="flex-1 bg-transparent hover:bg-zinc-800/50 text-zinc-400 py-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700 cursor-pointer">Reset</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Blackboard Stream (Main Feed) -->
+        <main class="flex-1 flex flex-col bg-dark overflow-hidden relative">
+            <!-- Subtle Dot Matrix Background -->
+            <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:16px_16px] opacity-20"></div>
+            
+            <div class="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-dark/90 backdrop-blur z-10 sticky top-0">
+                <h2 class="text-sm font-medium flex items-center gap-2 text-zinc-300">
+                    <i data-lucide="activity" class="w-4 h-4 text-emerald-500"></i>
+                    Live Event Stream
+                </h2>
+                <span class="text-[11px] font-mono text-zinc-500 px-2 py-1 rounded-md bg-zinc-900 border border-zinc-800 tracking-wider">
+                    <span id="event-count">0</span> EVENTS
+                </span>
+            </div>
+
+            <div id="timeline" class="flex-1 overflow-y-auto p-6 flex flex-col-reverse gap-6 z-10 scroll-smooth pb-20">
+                <!-- Empty State -->
+                <div id="empty-state" class="h-full flex flex-col items-center justify-center text-zinc-600 gap-4 mb-20">
+                    <i data-lucide="box" class="w-12 h-12 stroke-1"></i>
+                    <p class="text-sm">Awaiting blackboard events...</p>
+                </div>
+            </div>
+        </main>
     </div>
 
-    <!-- Right Column: Live Event Stream -->
-    <section class="panel" style="display: flex; flex-direction: column;">
-      <div class="panel-header">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <span class="panel-title" id="timeline-title">Live Blackboard Event Stream</span>
-        </div>
-        <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);" id="event-counter">0 events</span>
-      </div>
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+        
+        const timeline = document.getElementById('timeline');
+        const emptyState = document.getElementById('empty-state');
+        const eventCountEl = document.getElementById('event-count');
+        let eventCounter = 0;
+        const renderedEventIds = new Set();
 
-      <div class="timeline-container" id="timeline-feed">
-        <div class="empty-state" id="feed-empty">No events yet. Submit a task to begin reactive agent execution.</div>
-      </div>
-    </section>
-  </main>
+        // Color coding dynamically based on Agent Role
+        const getRoleStyles = (role) => {
+            const roleMap = {
+                'USER': 'bg-zinc-800 text-zinc-300 border-zinc-600',
+                'CODER': 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+                'SUPERVISOR': 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+                'DESIGNER': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+                'REVIEWER': 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+            };
+            return roleMap[(role || '').toUpperCase()] || 'bg-zinc-800 text-zinc-400 border-zinc-700';
+        };
 
-  <script>
-    const wsDot = document.getElementById('ws-dot');
-    const wsStatus = document.getElementById('ws-status');
-    const timelineFeed = document.getElementById('timeline-feed');
-    const feedEmpty = document.getElementById('feed-empty');
-    const eventCounter = document.getElementById('event-counter');
-    const taskForm = document.getElementById('task-form');
-    const promptInput = document.getElementById('prompt-input');
-    const btnSubmit = document.getElementById('btn-submit');
-    const searchInput = document.getElementById('search-input');
-    const btnSearch = document.getElementById('btn-search');
-    const btnReset = document.getElementById('btn-reset');
-    const searchCount = document.getElementById('search-count');
-    const timelineTitle = document.getElementById('timeline-title');
+        // UI function to inject new WebSocket / REST data
+        function createEventCard(event) {
+            if (event.id && renderedEventIds.has(event.id)) {
+                return; // prevent duplicate renders
+            }
+            if (event.id) renderedEventIds.add(event.id);
 
-    let events = [];
-    let isSearchMode = false;
+            if (emptyState) emptyState.style.display = 'none';
+            
+            // Prettify raw JSON to make it highly readable
+            let formattedData = event.data;
+            try {
+                if (typeof event.data === 'string') {
+                    formattedData = JSON.stringify(JSON.parse(event.data), null, 2);
+                } else if (typeof event.data === 'object') {
+                    formattedData = JSON.stringify(event.data, null, 2);
+                }
+            } catch(e) {}
 
-    // WebSocket Management
-    function setupWebSocket() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/events`;
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        wsDot.classList.add('connected');
-        wsStatus.textContent = 'WS Connected';
-      };
-
-      ws.onmessage = (evt) => {
-        try {
-          const eventData = JSON.parse(evt.data);
-          addEventToFeed(eventData, true);
-        } catch (err) {
-          console.error('Failed to parse WS event payload:', err);
+            const role = event.role || event.agent_role || 'SYSTEM';
+            const roleStyle = getRoleStyles(role);
+            const card = document.createElement('div');
+            
+            card.className = 'bg-panel border border-border rounded-lg overflow-hidden shadow-sm transition-all hover:border-zinc-700 group';
+            card.innerHTML = `
+                <div class="px-4 py-2 border-b border-border/50 bg-panel flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest border ${roleStyle}">
+                            #${event.id || ++eventCounter} • ${role}
+                        </span>
+                        <span class="text-xs text-zinc-500 font-mono">
+                            Action: <span class="text-zinc-300 font-medium">${event.status || 'unknown'}</span>
+                        </span>
+                    </div>
+                    <span class="text-[10px] text-zinc-600 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
+                        ${event.timestamp || new Date().toLocaleTimeString()}
+                    </span>
+                </div>
+                <div class="p-4 overflow-x-auto bg-[#0d0d0f] border-t border-black/50">
+                    <pre><code class="language-json text-xs mono leading-relaxed">${escapeHtml(formattedData)}</code></pre>
+                </div>
+            `;
+            
+            // Append to top of the reversed flex column
+            timeline.prepend(card);
+            
+            // Apply Highlight.js to the new card
+            card.querySelectorAll('pre code').forEach((el) => {
+                hljs.highlightElement(el);
+            });
+            
+            eventCountEl.innerText = document.querySelectorAll('#timeline > div.bg-panel').length;
         }
-      };
 
-      ws.onclose = () => {
-        wsDot.classList.remove('connected');
-        wsStatus.textContent = 'WS Disconnected (reconnecting...)';
-        setTimeout(setupWebSocket, 2000);
-      };
-
-      ws.onerror = (err) => {
-        console.error('WebSocket encountered an error:', err);
-      };
-    }
-
-    function getRoleBadgeClass(role) {
-      const r = (role || '').toLowerCase();
-      if (r.includes('supervisor')) return 'badge-role-supervisor';
-      if (r.includes('coder')) return 'badge-role-coder';
-      if (r.includes('reviewer')) return 'badge-role-reviewer';
-      return 'badge-role-user';
-    }
-
-    function createEventCard(event) {
-      const card = document.createElement('div');
-      card.className = 'event-card';
-      const role = event.agent_role || event.role || 'system';
-      const roleBadgeClass = getRoleBadgeClass(role);
-      const payloadString = typeof event.data === 'object' ? JSON.stringify(event.data, null, 2) : event.data;
-
-      card.innerHTML = `
-        <div class="event-card-header">
-          <span class="badge ${roleBadgeClass}">#${event.id} &bull; ${role}</span>
-          <span class="event-time">${event.timestamp || new Date().toLocaleTimeString()}</span>
-        </div>
-        <div class="event-status">Status: <strong>${event.status}</strong></div>
-        <pre class="event-payload">${escapeHtml(payloadString)}</pre>
-      `;
-      return card;
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    function addEventToFeed(event, prepend = true) {
-      if (feedEmpty) feedEmpty.style.display = 'none';
-      events.unshift(event);
-      if (!isSearchMode) {
-        const card = createEventCard(event);
-        if (prepend && timelineFeed.firstChild) {
-          timelineFeed.insertBefore(card, timelineFeed.firstChild);
-        } else {
-          timelineFeed.appendChild(card);
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
-        eventCounter.textContent = `${events.length} events`;
-      }
-    }
 
-    // Task Submission (POST /task)
-    taskForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const prompt = promptInput.value.trim();
-      if (!prompt) return;
+        /* -------------------------------------------------------------
+           REAL WEBSOCKET CONNECTION
+        --------------------------------------------------------------*/
+        const wsBadge = document.getElementById('ws-badge');
+        const wsText = document.getElementById('ws-text');
+        const wsIndicator = document.getElementById('ws-indicator');
 
-      btnSubmit.disabled = true;
-      btnSubmit.textContent = 'Submitting...';
+        function connectWS() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/events`;
+            const ws = new WebSocket(wsUrl);
 
-      try {
-        const res = await fetch('/task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt }),
+            ws.onopen = () => {
+                wsBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 transition-colors shadow-sm';
+                wsIndicator.className = 'w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse';
+                wsText.innerText = 'WS Connected';
+            };
+
+            ws.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    createEventCard(data);
+                } catch (err) {
+                    console.error('WS message error:', err);
+                }
+            };
+
+            ws.onclose = () => {
+                wsBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 transition-colors';
+                wsIndicator.className = 'w-2 h-2 rounded-full bg-red-500 animate-pulse';
+                wsText.innerText = 'Disconnected (reconnecting...)';
+                setTimeout(connectWS, 2000);
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+        }
+
+        // Connect immediately
+        connectWS();
+        
+        // Hook up the Dispatch Button to FastAPI POST /task endpoint
+        async function dispatchTask() {
+            const input = document.getElementById('task-input');
+            const val = input.value.trim();
+            if(!val) return;
+            
+            input.value = '';
+            
+            try {
+                const res = await fetch('/task', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: val })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert('Error: ' + (err.detail || 'Failed to dispatch task'));
+                }
+            } catch (err) {
+                console.error('Task dispatch error:', err);
+                alert('Network error submitting task: ' + err.message);
+            }
+        }
+
+        document.getElementById('dispatch-btn').addEventListener('click', dispatchTask);
+        document.getElementById('task-input').addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                dispatchTask();
+            }
         });
 
-        if (res.ok) {
-          promptInput.value = '';
-        } else {
-          const err = await res.json();
-          alert('Task submission failed: ' + (err.detail || 'Unknown error'));
+        // FTS5 Search and Reset
+        async function searchTimeline() {
+            const q = document.getElementById('search-input').value.trim();
+            if (!q) return;
+
+            try {
+                const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    timeline.innerHTML = '';
+                    renderedEventIds.clear();
+
+                    if (data.results && data.results.length > 0) {
+                        data.results.forEach(evt => createEventCard(evt));
+                    } else {
+                        timeline.innerHTML = `
+                            <div class="h-full flex flex-col items-center justify-center text-zinc-600 gap-2 mb-20">
+                                <p class="text-sm">No events found matching "${escapeHtml(q)}"</p>
+                            </div>`;
+                    }
+                    eventCountEl.innerText = data.count || 0;
+                }
+            } catch (err) {
+                console.error('Search error:', err);
+            }
         }
-      } catch (err) {
-        alert('Network error submitting task: ' + err.message);
-      } finally {
-        btnSubmit.disabled = false;
-        btnSubmit.textContent = 'Enqueue Task (POST /task)';
-      }
-    });
 
-    // FTS5 Search
-    async function executeSearch() {
-      const q = searchInput.value.trim();
-      if (!q) {
-        resetSearch();
-        return;
-      }
-
-      isSearchMode = true;
-      timelineTitle.textContent = `FTS5 Results: "${q}"`;
-      timelineFeed.innerHTML = '<div class="empty-state">Searching Blackboard index...</div>';
-
-      try {
-        const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        timelineFeed.innerHTML = '';
-        searchCount.textContent = `${data.count} matches`;
-
-        if (data.results && data.results.length > 0) {
-          data.results.forEach((item) => {
-            timelineFeed.appendChild(createEventCard(item));
-          });
-        } else {
-          timelineFeed.innerHTML = `<div class="empty-state">No matching events found for query: "${escapeHtml(q)}"</div>`;
-        }
-      } catch (err) {
-        timelineFeed.innerHTML = `<div class="empty-state" style="color:#ef4444;">Search error: ${escapeHtml(err.message)}</div>`;
-      }
-    }
-
-    function resetSearch() {
-      isSearchMode = false;
-      searchInput.value = '';
-      searchCount.textContent = '';
-      timelineTitle.textContent = 'Live Blackboard Event Stream';
-      timelineFeed.innerHTML = '';
-      if (events.length === 0) {
-        timelineFeed.innerHTML = '<div class="empty-state" id="feed-empty">No events yet. Submit a task to begin reactive agent execution.</div>';
-      } else {
-        events.forEach((item) => {
-          timelineFeed.appendChild(createEventCard(item));
+        document.getElementById('search-btn').addEventListener('click', searchTimeline);
+        document.getElementById('search-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') searchTimeline();
         });
-      }
-      eventCounter.textContent = `${events.length} events`;
-    }
 
-    btnSearch.addEventListener('click', executeSearch);
-    searchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') executeSearch();
-    });
-    btnReset.addEventListener('click', resetSearch);
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            document.getElementById('search-input').value = '';
+            timeline.innerHTML = '';
+            renderedEventIds.clear();
+            loadRecentEvents();
+        });
 
-    // Initial Load of Recent Events
-    async function loadRecentEvents() {
-      try {
-        const res = await fetch('/events');
-        if (res.ok) {
-          const list = await res.json();
-          // Events from /events are newest first
-          list.reverse().forEach((evt) => addEventToFeed(evt, true));
+        // Load existing events on startup
+        async function loadRecentEvents() {
+            try {
+                const res = await fetch('/events?limit=50');
+                if (res.ok) {
+                    const events = await res.json();
+                    if (events && events.length > 0) {
+                        // Reverse so prepend puts newest at the top
+                        events.reverse().forEach(evt => createEventCard(evt));
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not fetch initial events:', e);
+            }
         }
-      } catch (e) {
-        console.warn('Could not load initial events:', e);
-      }
-    }
 
-    // Startup
-    setupWebSocket();
-    loadRecentEvents();
-  </script>
+        loadRecentEvents();
+    </script>
 </body>
 </html>

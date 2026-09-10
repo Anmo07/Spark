@@ -187,7 +187,7 @@ async def test_fastapi_endpoints():
         # 5. GET /
         resp_root = await client.get("/")
         assert resp_root.status_code == 200
-        assert "Multi-Agent Software Sandbox" in resp_root.text
+        assert "Multi-Agent Sandbox" in resp_root.text
 
 
 @pytest.mark.asyncio

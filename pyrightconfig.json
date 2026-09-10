@@ -1,11 +1,11 @@
 {
-  "venvPath": ".",
+  "venvPath": "/Users/anmol/Documents/Projects/Spark",
   "venv": ".venv",
+  "extraPaths": [
+    "/Users/anmol/Documents/Projects/Spark/.venv/lib/python3.9/site-packages",
+    "./.venv/lib/python3.9/site-packages"
+  ],
   "include": [
     "."
-  ],
-  "exclude": [
-    "**/__pycache__",
-    ".venv"
   ]
 }
