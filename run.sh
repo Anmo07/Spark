@@ -53,4 +53,10 @@ fi
 
 # 5. Launch FastAPI Event Bus Server
 echo "[+] Starting FastAPI server at http://127.0.0.1:8000 ..."
-exec .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+exec .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload \
+    --reload-exclude "sandbox_workspace/*" \
+    --reload-exclude "*.db" \
+    --reload-exclude "*.db-*" \
+    --reload-exclude "frontend/*" \
+    --reload-exclude ".spark_context.md"
+

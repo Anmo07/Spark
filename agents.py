@@ -6,13 +6,12 @@ and advances the Blackboard workflow through reactive triggers:
   pending_supervisor -> pending_designer -> pending_coder -> pending_reviewer -> task_completed
 """
 
-from __future__ import annotations
-
+import asyncio
 import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 
@@ -50,6 +49,35 @@ You MUST respond with valid JSON matching this exact schema:
   "estimated_files": ["filename.py"]
 }
 Do not wrap your output in markdown backticks or commentary; output ONLY raw valid JSON."""
+
+SUPERVISOR_REVISION_SYSTEM_PROMPT = """You are the Lead Technical Supervisor of an autonomous multi-agent engineering team.
+The user has reviewed your architectural roadmap plan and provided custom instructions and feedback.
+You MUST update and revise the roadmap plan to strictly incorporate the user's feedback.
+You MUST respond with valid JSON matching this exact schema:
+{
+  "plan_overview": "Updated high-level summary incorporating user feedback",
+  "steps": [
+    {
+      "step_number": 1,
+      "assigned_role": "designer",
+      "instructions": "Specific instructions for the component architecture"
+    },
+    {
+      "step_number": 2,
+      "assigned_role": "coder",
+      "instructions": "Instructions for implementing the source files"
+    }
+  ],
+  "estimated_files": ["filename.py"]
+}
+Do not wrap your output in markdown backticks or commentary; output ONLY raw valid JSON."""
+
+FINAL_SUMMARY_SYSTEM_PROMPT = """You are Spark, the Master Orchestrator AI assistant in a software development IDE.
+The multi-agent engineering team (Supervisor, Designer, Coder, Reviewer) has completed the project execution tasks.
+Your job is to provide a conversational, encouraging, and clear final summary for the user in the Chat UI.
+Briefly explain what was accomplished and list all the files that were modified or created.
+Format cleanly in Markdown with bullet points."""
+
 
 DESIGNER_SYSTEM_PROMPT = """You are the Systems Designer & Architect.
 Based on the Supervisor's plan, produce concrete technical interface specifications, file structures, and function prototypes.
@@ -194,10 +222,12 @@ class AgentDispatcher:
         self,
         llm_client: Optional[OllamaClient] = None,
         workspace_dir: Path = WORKSPACE_DIR,
+        on_file_write: Optional[Callable[[str, str], Any]] = None,
     ) -> None:
         self.llm = llm_client or OllamaClient()
         self.workspace_dir = workspace_dir
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        self.on_file_write = on_file_write
         # Track retry attempts per root task
         self.review_retries: Dict[int, int] = {}
         self.circuit_breaker_limit = 2
@@ -211,7 +241,42 @@ class AgentDispatcher:
         safe_path.parent.mkdir(parents=True, exist_ok=True)
         safe_path.write_text(content, encoding="utf-8")
         logger.info("Autonomous tool: Wrote %d bytes to %s", len(content), safe_path)
+        if self.on_file_write:
+            try:
+                res = self.on_file_write(relative_path, content)
+                if asyncio.iscoroutine(res):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(res)
+                    except RuntimeError:
+                        pass
+            except Exception as exc:
+                logger.warning("Error in on_file_write callback: %s", exc)
         return safe_path
+
+    async def generate_roadmap(self, prompt: str) -> SupervisorResponse:
+        """Generate a structured roadmap plan from the user prompt."""
+        res_dict = await self.llm.generate_json(
+            system_prompt=SUPERVISOR_SYSTEM_PROMPT,
+            user_prompt=f"Task Objective:\n{prompt}",
+        )
+        return SupervisorResponse.model_validate(res_dict)
+
+    async def revise_roadmap(
+        self, prompt: str, current_plan: Dict[str, Any], feedback: str
+    ) -> SupervisorResponse:
+        """Revise an existing roadmap plan using custom instructions from the user."""
+        user_message = (
+            f"## Original Objective:\n{prompt}\n\n"
+            f"## Current Plan:\n{json.dumps(current_plan, indent=2)}\n\n"
+            f"## User Custom Instructions / Feedback:\n{feedback}"
+        )
+        res_dict = await self.llm.generate_json(
+            system_prompt=SUPERVISOR_REVISION_SYSTEM_PROMPT,
+            user_prompt=user_message,
+        )
+        return SupervisorResponse.model_validate(res_dict)
+
 
     async def process_event(self, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Evaluate an incoming Blackboard event and trigger the next agent workflow."""
@@ -489,3 +554,43 @@ class MasterAgent:
             update += f"- **Review:** {feedback[:200]}\n"
 
         self.update_context_memory(update)
+
+    async def generate_final_summary(
+        self, completion_data: Dict[str, Any], modified_files: Optional[List[str]] = None
+    ) -> str:
+        """Generate a conversational final summary when execution completes."""
+        context = self.read_context()
+        files = list(modified_files or [])
+        file_from_data = completion_data.get("file_path") or completion_data.get("saved_file")
+        if file_from_data and file_from_data not in files:
+            # Clean path to basename or relative
+            clean_file = Path(file_from_data).name
+            if clean_file not in files:
+                files.append(clean_file)
+
+        files_list_str = "\n".join([f"- `{f}`" for f in files]) if files else "- (Workspace updated)"
+        user_prompt = (
+            f"## Project Context (.spark_context.md):\n{context}\n\n"
+            f"## Latest Completion Event Data:\n{json.dumps(completion_data, indent=2)}\n\n"
+            f"## Files Modified or Created:\n{files_list_str}"
+        )
+        try:
+            summary = await self.llm.generate_text(
+                system_prompt=FINAL_SUMMARY_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+            )
+            if summary and len(summary.strip()) > 20:
+                return summary.strip()
+        except Exception as exc:
+            logger.warning("Failed to generate LLM final summary: %s", exc)
+
+        # Fallback conversational summary
+        task_summary = completion_data.get("summary", "All planned tasks have been implemented and verified.")
+        file_bullets = "\n".join([f"- `{f}`" for f in files]) if files else "- (Workspace updated)"
+        return (
+            f"🎉 **Execution Complete!**\n\n"
+            f"{task_summary}\n\n"
+            f"**Files Created / Modified:**\n{file_bullets}\n\n"
+            f"All code has passed quality review and is ready in your workspace!"
+        )
+

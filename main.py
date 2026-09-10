@@ -41,7 +41,16 @@ from database import (
     insert_event,
     search_events,
 )
-from schemas import ChatRequest, ChatResponse, EventResponse, SearchResponse, TaskCreate
+from schemas import (
+    ChatRequest,
+    ChatResponse,
+    DeleteFilePayload,
+    EventResponse,
+    RenameFilePayload,
+    RoadmapFeedbackRequest,
+    SearchResponse,
+    TaskCreate,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,10 +72,40 @@ master_agent = MasterAgent()
 
 STATIC_DIR = Path(__file__).parent / "static"
 WORKSPACE_DIR = Path(__file__).parent / "sandbox_workspace"
+ROADMAP_STATE_FILE = Path(__file__).parent / ".spark_roadmap.json"
+
+
+def save_roadmap_state(roadmap: Optional[Dict[str, Any]]) -> None:
+    """Persist active roadmap state to disk so it survives restarts."""
+    try:
+        if roadmap:
+            ROADMAP_STATE_FILE.write_text(json.dumps(roadmap, indent=2), encoding="utf-8")
+        elif ROADMAP_STATE_FILE.exists():
+            ROADMAP_STATE_FILE.unlink()
+    except Exception as exc:
+        logger.warning("Failed to save roadmap state: %s", exc)
+
+
+def load_roadmap_state() -> Optional[Dict[str, Any]]:
+    """Load persisted active roadmap state if present."""
+    if ROADMAP_STATE_FILE.exists():
+        try:
+            return json.loads(ROADMAP_STATE_FILE.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to load roadmap state: %s", exc)
+    return None
+
+
+# Human-in-the-Loop active roadmap state
+active_roadmap: Optional[Dict[str, Any]] = load_roadmap_state()
+
+# Track files modified during the active execution session
+session_modified_files: List[str] = []
 
 
 class ConnectionManager:
     """Manages real-time WebSocket client connections and event broadcasting."""
+
 
     def __init__(self) -> None:
         self.active_connections: List[WebSocket] = []
@@ -92,6 +131,29 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+async def on_coder_file_write(rel_path: str, content: str) -> None:
+    """Invoked whenever Coder agent writes a file to the sandbox workspace."""
+    if rel_path not in session_modified_files:
+        session_modified_files.append(rel_path)
+    # Objective 3.1: Live File Pills in Chat
+    await manager.broadcast({
+        "type": "file_written",
+        "path": rel_path,
+        "action": "created",
+    })
+    # Objective 1.2: Real-time file sync
+    await manager.broadcast({
+        "type": "fs_update",
+        "action": "write",
+        "path": rel_path,
+    })
+    logger.info("Live file write broadcasted: %s", rel_path)
+
+
+# Wire the live file write callback into the dispatcher
+dispatcher.on_file_write = on_coder_file_write
 
 
 async def queue_worker() -> None:
@@ -121,6 +183,31 @@ async def queue_worker() -> None:
                     except Exception as exc:
                         logger.warning("Failed to update context memory: %s", exc)
 
+                    # Objective 3.2: Final Summary output in Chat UI
+                    try:
+                        files = list(session_modified_files)
+                        file_path_data = (event.get("data") or {}).get("file_path")
+                        if file_path_data and file_path_data not in files:
+                            files.append(file_path_data)
+                        summary_text = await master_agent.generate_final_summary(
+                            completion_data=event.get("data") or {},
+                            modified_files=files,
+                        )
+                        await manager.broadcast({
+                            "type": "final_summary",
+                            "content": summary_text,
+                            "files": files,
+                        })
+                        logger.info("Broadcasted final summary with %d files to Chat UI", len(files))
+
+                        # Reset completed roadmap state
+                        global active_roadmap
+                        if active_roadmap and active_roadmap.get("status") == "approved":
+                            active_roadmap = None
+                            save_roadmap_state(None)
+                    except Exception as exc:
+                        logger.error("Failed to generate/broadcast final summary: %s", exc)
+
                 # Reactive Autonomous Agent Dispatch
                 next_action = await dispatcher.process_event(event)
                 if next_action:
@@ -141,6 +228,7 @@ async def queue_worker() -> None:
                 logger.warning("Event ID %d popped from queue but not found in database", event_id)
 
             event_bus.task_done()
+
         except asyncio.CancelledError:
             logger.info("Event bus queue worker cancelled.")
             break
@@ -210,17 +298,98 @@ async def health_check() -> Dict[str, Any]:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_master(req: ChatRequest) -> ChatResponse:
-    """Master Agent gateway: classifies intent and routes to chat or pipeline."""
+    """Master Agent gateway: classifies intent, manages HITL roadmap workflow, or routes to chat."""
+    global active_roadmap
     prompt = req.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
 
-    # Route through Master Agent
+    # -----------------------------------------------------------------------
+    # Objective 2: Human-in-the-Loop Roadmap State Machine
+    # -----------------------------------------------------------------------
+    if active_roadmap and active_roadmap.get("status") == "awaiting_approval":
+        normalized = prompt.lower()
+        is_approval = (
+            normalized in [
+                "proceed", "approve", "approved", "go ahead", "yes",
+                "confirm", "continue", "start", "run", "ok", "lgtm",
+            ]
+            or normalized.startswith("proceed")
+            or normalized.startswith("approve")
+        )
+
+        if is_approval:
+            # Resumption: Resume pipeline and hand off to Designer
+            approved_plan = active_roadmap["plan"]
+            task_prompt = active_roadmap["prompt"]
+            active_roadmap["status"] = "approved"
+            save_roadmap_state(active_roadmap)
+            session_modified_files.clear()
+
+            event_id = await insert_event(
+                agent_role="supervisor",
+                status="pending_designer",
+                data={
+                    "task_prompt": task_prompt,
+                    **approved_plan,
+                },
+            )
+            await event_bus.put(event_id)
+            logger.info("HITL: Roadmap APPROVED by user! Resumed pipeline with event #%d", event_id)
+
+            await manager.broadcast({
+                "type": "roadmap_status",
+                "status": "approved",
+                "message": "Roadmap approved. Execution pipeline resumed.",
+            })
+
+            return ChatResponse(
+                type="system_event",
+                content="✅ Roadmap approved! Starting execution with Designer and Coder...",
+                status="approved",
+            )
+        elif normalized in ["cancel", "abort", "stop"]:
+            active_roadmap = None
+            save_roadmap_state(None)
+            return ChatResponse(
+                type="chat",
+                content="Roadmap execution cancelled. How else can I assist you?",
+                status="cancelled",
+            )
+        else:
+            # Custom instructions given by user to revise the roadmap
+            logger.info("HITL: User provided custom instructions to revise roadmap: '%s'", prompt[:60])
+            try:
+                revised_plan = await dispatcher.revise_roadmap(
+                    prompt=active_roadmap["prompt"],
+                    current_plan=active_roadmap["plan"],
+                    feedback=prompt,
+                )
+                active_roadmap["plan"] = revised_plan.model_dump()
+                active_roadmap.setdefault("feedback_history", []).append(prompt)
+                save_roadmap_state(active_roadmap)
+
+                return ChatResponse(
+                    type="roadmap",
+                    content=f"I've updated the roadmap based on your instructions. Please review and reply with **Proceed** or provide further instructions:",
+                    roadmap=active_roadmap["plan"],
+                    status="awaiting_approval",
+                )
+            except Exception as exc:
+                logger.error("Failed to revise roadmap: %s", exc)
+                return ChatResponse(
+                    type="roadmap",
+                    content=f"Error revising roadmap: {str(exc)}. Retaining current plan. Please review or retry:",
+                    roadmap=active_roadmap["plan"],
+                    status="awaiting_approval",
+                )
+
+    # -----------------------------------------------------------------------
+    # Normal Master Agent Routing
+    # -----------------------------------------------------------------------
     route_result = await master_agent.route(prompt)
 
     if route_result.intent == "general_chat":
-        # For general chat, get a proper conversational response
-        # The router may provide a brief chat_response, but we generate a fuller one
         chat_text = route_result.chat_response
         if not chat_text or len(chat_text) < 20:
             chat_text = await master_agent.chat(prompt)
@@ -230,34 +399,114 @@ async def chat_with_master(req: ChatRequest) -> ChatResponse:
             content=chat_text,
         )
     else:
-        # Project execution: decompose into sub-tasks and push to pipeline
-        sub_task_descriptions = []
-        if route_result.sub_tasks:
-            for st in route_result.sub_tasks:
-                event_id = await insert_event(
-                    agent_role="user",
-                    status="pending_supervisor",
-                    data={"prompt": st.description},
-                )
-                await event_bus.put(event_id)
-                sub_task_descriptions.append(st.description)
-                logger.info("Master Agent dispatched sub-task: %s (event #%d)", st.description[:60], event_id)
-        else:
-            # Fallback: push the original prompt as a single task
+        # Project execution: The Pause State!
+        # Supervisor generates Roadmap Plan, sends to Chat UI, and pauses pipeline
+        logger.info("Master Agent categorized prompt as project_execution. Supervisor generating Roadmap Plan...")
+        try:
+            supervisor_plan = await dispatcher.generate_roadmap(prompt)
+            active_roadmap = {
+                "prompt": prompt,
+                "plan": supervisor_plan.model_dump(),
+                "status": "awaiting_approval",
+                "feedback_history": [],
+            }
+            save_roadmap_state(active_roadmap)
+            logger.info("HITL: Roadmap generated. Execution PAUSED awaiting user approval.")
+            return ChatResponse(
+                type="roadmap",
+                content="Here is the architectural roadmap plan. Please review and reply with **Proceed** or provide custom instructions to adjust the plan:",
+                roadmap=active_roadmap["plan"],
+                status="awaiting_approval",
+            )
+        except Exception as exc:
+            logger.error("Supervisor roadmap generation failed, falling back to direct pipeline: %s", exc)
             event_id = await insert_event(
                 agent_role="user",
                 status="pending_supervisor",
                 data={"prompt": prompt},
             )
             await event_bus.put(event_id)
-            sub_task_descriptions.append(prompt)
+            return ChatResponse(
+                type="system_event",
+                content="🚀 Dispatched task directly to agent pipeline.",
+                sub_tasks=[prompt],
+            )
 
-        task_count = len(sub_task_descriptions)
-        return ChatResponse(
-            type="system_event",
-            content=f"🚀 Dispatched {task_count} sub-task{'s' if task_count != 1 else ''} to the agent pipeline.",
-            sub_tasks=sub_task_descriptions,
+
+@app.post("/roadmap/approve", response_model=ChatResponse)
+async def approve_roadmap() -> ChatResponse:
+    """Explicitly approve the pending roadmap and resume pipeline execution to Designer & Coder."""
+    global active_roadmap
+    if not active_roadmap or active_roadmap.get("status") != "awaiting_approval":
+        raise HTTPException(status_code=400, detail="No roadmap is currently awaiting approval.")
+
+    approved_plan = active_roadmap["plan"]
+    task_prompt = active_roadmap["prompt"]
+    active_roadmap["status"] = "approved"
+    save_roadmap_state(active_roadmap)
+    session_modified_files.clear()
+
+    event_id = await insert_event(
+        agent_role="supervisor",
+        status="pending_designer",
+        data={
+            "task_prompt": task_prompt,
+            **approved_plan,
+        },
+    )
+    await event_bus.put(event_id)
+    logger.info("Roadmap APPROVED via /roadmap/approve! Resumed pipeline with event #%d", event_id)
+
+    await manager.broadcast({
+        "type": "roadmap_status",
+        "status": "approved",
+        "message": "Roadmap approved. Pipeline execution resumed.",
+    })
+
+    return ChatResponse(
+        type="system_event",
+        content="✅ Roadmap approved! Starting execution with Designer and Coder...",
+        status="approved",
+    )
+
+
+@app.post("/roadmap/feedback", response_model=ChatResponse)
+async def feedback_roadmap(payload: RoadmapFeedbackRequest) -> ChatResponse:
+    """Submit custom instructions to update the pending roadmap."""
+    global active_roadmap
+    if not active_roadmap or active_roadmap.get("status") != "awaiting_approval":
+        raise HTTPException(status_code=400, detail="No roadmap is currently awaiting approval.")
+
+    feedback_text = payload.feedback.strip()
+    if not feedback_text:
+        raise HTTPException(status_code=400, detail="Feedback must not be empty.")
+
+    try:
+        revised_plan = await dispatcher.revise_roadmap(
+            prompt=active_roadmap["prompt"],
+            current_plan=active_roadmap["plan"],
+            feedback=feedback_text,
         )
+        active_roadmap["plan"] = revised_plan.model_dump()
+        active_roadmap.setdefault("feedback_history", []).append(feedback_text)
+        save_roadmap_state(active_roadmap)
+
+        return ChatResponse(
+            type="roadmap",
+            content=f"I've updated the roadmap with your instructions. Please review and approve to proceed:",
+            roadmap=active_roadmap["plan"],
+            status="awaiting_approval",
+        )
+    except Exception as exc:
+        logger.error("Failed to revise roadmap: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to revise roadmap: {exc}")
+
+
+@app.get("/roadmap/current")
+async def get_current_roadmap() -> Dict[str, Any]:
+    """Inspect current active roadmap state."""
+    return active_roadmap or {"status": "none"}
+
 
 
 # ---------------------------------------------------------------------------
@@ -383,17 +632,24 @@ class _FileWritePayload(_BaseModel):
 
 @app.post("/workspace/file")
 async def workspace_write_file(payload: _FileWritePayload) -> dict:
-    """Write (overwrite) a file inside sandbox_workspace/."""
+    """Write (overwrite) a file inside sandbox_workspace/, auto-creating parent directories."""
     target = _safe_workspace_path(payload.path)
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         target.write_text(payload.content, encoding="utf-8")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error writing file: {exc}")
+
+    # Objective 1.2: Broadcast fs_update on file write
+    await manager.broadcast({
+        "type": "fs_update",
+        "action": "write",
+        "path": payload.path,
+    })
     return {"path": payload.path, "size": len(payload.content), "status": "written"}
 
 
-# --- Phase 3: Directory management ---
+# --- Directory management & CRUD ---
 
 class _MkdirPayload(_BaseModel):
     path: str
@@ -406,6 +662,13 @@ async def workspace_mkdir(payload: _MkdirPayload) -> dict:
         target.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error creating directory: {exc}")
+
+    # Objective 1.2: Broadcast fs_update on directory creation
+    await manager.broadcast({
+        "type": "fs_update",
+        "action": "mkdir",
+        "path": payload.path,
+    })
     return {"path": payload.path, "status": "created"}
 
 
@@ -427,18 +690,25 @@ async def workspace_rename(payload: _RenamePayload) -> dict:
         source.rename(dest)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error renaming: {exc}")
+
+    # Objective 1.2: Broadcast fs_update on rename
+    await manager.broadcast({
+        "type": "fs_update",
+        "action": "rename",
+        "old_path": payload.old_path,
+        "new_path": payload.new_path,
+    })
     return {"old_path": payload.old_path, "new_path": payload.new_path, "status": "renamed"}
 
 
 class _DeletePayload(_BaseModel):
-    path: str
+    path: Optional[str] = None
 
-@app.delete("/workspace/delete")
-async def workspace_delete(payload: _DeletePayload) -> dict:
-    """Delete a file or directory inside sandbox_workspace/."""
-    target = _safe_workspace_path(payload.path)
+
+async def _execute_delete(path_str: str) -> dict:
+    target = _safe_workspace_path(path_str)
     if not target.exists():
-        raise HTTPException(status_code=404, detail=f"Not found: {payload.path}")
+        raise HTTPException(status_code=404, detail=f"Not found: {path_str}")
     try:
         if target.is_dir():
             shutil.rmtree(target)
@@ -446,7 +716,39 @@ async def workspace_delete(payload: _DeletePayload) -> dict:
             target.unlink()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error deleting: {exc}")
-    return {"path": payload.path, "status": "deleted"}
+
+    # Objective 1.2: Broadcast fs_update on delete
+    await manager.broadcast({
+        "type": "fs_update",
+        "action": "delete",
+        "path": path_str,
+    })
+    return {"path": path_str, "status": "deleted"}
+
+
+@app.delete("/workspace/file")
+async def workspace_delete_file(
+    path: Optional[str] = Query(None, description="Relative path inside sandbox_workspace to delete"),
+    payload: Optional[_DeletePayload] = None,
+) -> dict:
+    """Delete a file or directory inside sandbox_workspace/ (Objective 1.1)."""
+    target_path = path or (payload.path if payload else None)
+    if not target_path:
+        raise HTTPException(status_code=400, detail="Must provide 'path' as query param or in JSON payload.")
+    return await _execute_delete(target_path)
+
+
+@app.delete("/workspace/delete")
+async def workspace_delete(
+    payload: Optional[_DeletePayload] = None,
+    path: Optional[str] = Query(None),
+) -> dict:
+    """Backward-compatible endpoint to delete a file or directory."""
+    target_path = (payload.path if payload else None) or path
+    if not target_path:
+        raise HTTPException(status_code=400, detail="Must provide 'path' as query param or in JSON payload.")
+    return await _execute_delete(target_path)
+
 
 
 # ---------------------------------------------------------------------------

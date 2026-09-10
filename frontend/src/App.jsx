@@ -26,8 +26,11 @@ import {
   Bot,
   User,
   Activity,
+  CheckCircle2,
+  ListChecks,
 } from 'lucide-react';
 import './App.css';
+
 
 /* =========================================================================
    Constants
@@ -95,7 +98,7 @@ function ContextMenu({ x, y, items, onClose }) {
 
 function FileTreeNode({
   node, depth = 0, parentPath = '', activeFile,
-  onFileClick, onContextMenu,
+  onFileClick, onContextMenu, onCreateFile, onCreateFolder, onRename, onDelete, onDownload,
 }) {
   const [expanded, setExpanded] = useState(depth < 1);
   const fullPath = parentPath ? `${parentPath}/${node.name}` : node.name;
@@ -119,13 +122,45 @@ function FileTreeNode({
         >
           {expanded ? <ChevronDown className="icon" size={14} /> : <ChevronRight className="icon" size={14} />}
           {expanded ? <FolderOpen className="icon" size={15} /> : <FolderClosed className="icon" size={15} />}
-          <span className="tree-item-name">{node.name}</span>
-          <button
-            className="tree-more-btn"
-            onClick={(e) => { e.stopPropagation(); onContextMenu(e, fullPath, true); }}
-          >
-            <MoreHorizontal size={13} />
-          </button>
+          <span className="tree-item-name" title={fullPath}>{node.name}</span>
+          
+          <div className="tree-hover-actions">
+            <button
+              className="tree-action-btn"
+              title="New File in this folder"
+              onClick={(e) => { e.stopPropagation(); onCreateFile?.(fullPath); }}
+            >
+              <FilePlus size={12} />
+            </button>
+            <button
+              className="tree-action-btn"
+              title="New Folder in this folder"
+              onClick={(e) => { e.stopPropagation(); onCreateFolder?.(fullPath); }}
+            >
+              <FolderPlus size={12} />
+            </button>
+            <button
+              className="tree-action-btn"
+              title="Rename folder"
+              onClick={(e) => { e.stopPropagation(); onRename?.(fullPath); }}
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              className="tree-action-btn delete"
+              title="Delete folder"
+              onClick={(e) => { e.stopPropagation(); onDelete?.(fullPath); }}
+            >
+              <Trash2 size={12} />
+            </button>
+            <button
+              className="tree-more-btn"
+              title="More options"
+              onClick={(e) => { e.stopPropagation(); onContextMenu(e, fullPath, true); }}
+            >
+              <MoreHorizontal size={13} />
+            </button>
+          </div>
         </div>
         {expanded && node.children?.map((child) => (
           <FileTreeNode
@@ -136,6 +171,11 @@ function FileTreeNode({
             activeFile={activeFile}
             onFileClick={onFileClick}
             onContextMenu={onContextMenu}
+            onCreateFile={onCreateFile}
+            onCreateFolder={onCreateFolder}
+            onRename={onRename}
+            onDelete={onDelete}
+            onDownload={onDownload}
           />
         ))}
       </>
@@ -152,27 +192,240 @@ function FileTreeNode({
       onContextMenu={handleContextMenu}
     >
       <IconComponent className="icon" size={14} />
-      <span className="tree-item-name">{node.name}</span>
-      <button
-        className="tree-more-btn"
-        onClick={(e) => { e.stopPropagation(); onContextMenu(e, fullPath, false); }}
-      >
-        <MoreHorizontal size={13} />
-      </button>
+      <span className="tree-item-name" title={fullPath}>{node.name}</span>
+      <div className="tree-hover-actions">
+        <button
+          className="tree-action-btn"
+          title="Rename file"
+          onClick={(e) => { e.stopPropagation(); onRename?.(fullPath); }}
+        >
+          <Pencil size={12} />
+        </button>
+        <button
+          className="tree-action-btn delete"
+          title="Delete file"
+          onClick={(e) => { e.stopPropagation(); onDelete?.(fullPath); }}
+        >
+          <Trash2 size={12} />
+        </button>
+        <button
+          className="tree-action-btn"
+          title="Download file"
+          onClick={(e) => { e.stopPropagation(); onDownload?.(fullPath); }}
+        >
+          <Download size={12} />
+        </button>
+        <button
+          className="tree-more-btn"
+          title="More options"
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e, fullPath, false); }}
+        >
+          <MoreHorizontal size={13} />
+        </button>
+      </div>
     </div>
   );
 }
 
 /* =========================================================================
-   ChatMessage — single chat bubble or system event
+   RoadmapCard — Human-in-the-Loop approval card
    ========================================================================= */
 
-function ChatMessage({ msg }) {
+function RoadmapCard({ msg, onApprove, onFeedback, disabled }) {
+  const [feedback, setFeedback] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const isApproved = msg.status === 'approved';
+
+  const handleApprove = async () => {
+    if (submitting || disabled) return;
+    setSubmitting(true);
+    try {
+      await onApprove();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleFeedback = async () => {
+    if (!feedback.trim() || submitting || disabled) return;
+    setSubmitting(true);
+    try {
+      await onFeedback(feedback.trim());
+      setFeedback('');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className={`roadmap-card ${isApproved ? 'approved' : 'pending'}`}>
+      <div className="roadmap-header">
+        <div className="roadmap-title">
+          <ListChecks size={16} />
+          <span>Architectural Roadmap</span>
+        </div>
+        <span className={`roadmap-status-pill ${isApproved ? 'approved' : 'pending'}`}>
+          {isApproved ? '✓ Approved & Executing' : '⏳ Awaiting Approval'}
+        </span>
+      </div>
+
+      {msg.content && <p className="roadmap-intro">{msg.content}</p>}
+
+      {msg.roadmap?.plan_overview && (
+        <div className="roadmap-overview">
+          <span className="roadmap-section-title">Overview</span>
+          <p>{msg.roadmap.plan_overview}</p>
+        </div>
+      )}
+
+      {msg.roadmap?.steps && msg.roadmap.steps.length > 0 && (
+        <div className="roadmap-steps-container">
+          <span className="roadmap-section-title">Execution Steps</span>
+          <div className="roadmap-steps-list">
+            {msg.roadmap.steps.map((st, idx) => (
+              <div key={idx} className="roadmap-step-item">
+                <div className="roadmap-step-head">
+                  <span className="step-num">Step {st.step_number || idx + 1}</span>
+                  <span className={`step-role-tag role-${st.assigned_role}`}>
+                    {st.assigned_role}
+                  </span>
+                </div>
+                <div className="step-inst">{st.instructions}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {msg.roadmap?.estimated_files && msg.roadmap.estimated_files.length > 0 && (
+        <div className="roadmap-files-container">
+          <span className="roadmap-section-title">Estimated Files</span>
+          <div className="roadmap-files-pills">
+            {msg.roadmap.estimated_files.map((file, idx) => (
+              <span key={idx} className="roadmap-file-pill">
+                <FileCode2 size={12} />
+                <span>{file}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isApproved && (
+        <div className="roadmap-actions-bar">
+          <button
+            className="roadmap-proceed-btn"
+            onClick={handleApprove}
+            disabled={submitting || disabled}
+            title="Approve plan and resume execution"
+          >
+            <CheckCircle2 size={16} />
+            <span>Proceed</span>
+          </button>
+
+          <div className="roadmap-feedback-form">
+            <input
+              type="text"
+              className="roadmap-feedback-input"
+              placeholder="Custom instructions (e.g. Change database to PostgreSQL)..."
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleFeedback();
+                }
+              }}
+              disabled={submitting || disabled}
+            />
+            <button
+              className="roadmap-update-btn"
+              onClick={handleFeedback}
+              disabled={submitting || disabled || !feedback.trim()}
+            >
+              Update Plan
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   ChatMessage — single chat bubble, file pill, roadmap card, or final summary
+   ========================================================================= */
+
+function ChatMessage({ msg, onOpenFile, onApproveRoadmap, onFeedbackRoadmap, disabled }) {
   if (msg.type === 'system_event') {
     return (
       <div className="chat-system-event">
         <Activity size={12} />
         <span>{msg.content}</span>
+      </div>
+    );
+  }
+
+  // Objective 3.1: Live File Pill in chat stream
+  if (msg.type === 'file_pill') {
+    return (
+      <div
+        className="chat-file-pill"
+        onClick={() => onOpenFile?.(msg.path)}
+        title={`Click to open ${msg.path} in editor`}
+      >
+        <CheckCircle2 size={14} className="pill-check-icon" />
+        <span className="pill-action">Created</span>
+        <code className="pill-filename">{msg.path}</code>
+        <span className="pill-hint">Open</span>
+      </div>
+    );
+  }
+
+  // Objective 2: Human-in-the-Loop Roadmap Plan Card
+  if (msg.type === 'roadmap') {
+    return (
+      <RoadmapCard
+        msg={msg}
+        onApprove={onApproveRoadmap}
+        onFeedback={onFeedbackRoadmap}
+        disabled={disabled}
+      />
+    );
+  }
+
+  // Objective 3.2: Final Summary
+  if (msg.type === 'final_summary') {
+    return (
+      <div className="chat-bubble assistant final-summary-bubble">
+        <div className="chat-bubble-icon">
+          <Sparkles size={15} className="summary-sparkle-icon" />
+        </div>
+        <div className="chat-bubble-content">
+          <div className="summary-header-badge">
+            <CheckCircle2 size={14} />
+            <span>Execution Completed</span>
+          </div>
+          <pre className="chat-text">{msg.content}</pre>
+          {msg.files && msg.files.length > 0 && (
+            <div className="summary-files-section">
+              <div className="summary-files-label">Created & Modified Files:</div>
+              <div className="summary-files-list">
+                {msg.files.map((file, i) => (
+                  <button
+                    key={i}
+                    className="summary-file-btn"
+                    onClick={() => onOpenFile?.(file)}
+                    title={`Open ${file} in Monaco Editor`}
+                  >
+                    <FileCode2 size={13} />
+                    <span>{file}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -199,6 +452,7 @@ function ChatMessage({ msg }) {
     </div>
   );
 }
+
 
 /* =========================================================================
    TerminalPane — xterm.js panel
@@ -417,7 +671,8 @@ export default function App() {
   // Workspace CRUD
   // ==========================
   const createNewFile = useCallback(async (dirPath) => {
-    const name = window.prompt('New file name:');
+    const promptMsg = dirPath ? `New file name inside "${dirPath}":` : 'New file name (e.g. index.js):';
+    const name = window.prompt(promptMsg);
     if (!name) return;
     const filePath = dirPath ? `${dirPath}/${name}` : name;
     try {
@@ -432,7 +687,8 @@ export default function App() {
   }, [fetchTree, openFile]);
 
   const createNewFolder = useCallback(async (dirPath) => {
-    const name = window.prompt('New folder name:');
+    const promptMsg = dirPath ? `New folder name inside "${dirPath}":` : 'New folder name:';
+    const name = window.prompt(promptMsg);
     if (!name) return;
     const folderPath = dirPath ? `${dirPath}/${name}` : name;
     try {
@@ -468,13 +724,13 @@ export default function App() {
   const deleteItem = useCallback(async (itemPath) => {
     if (!window.confirm(`Delete "${itemPath}"?`)) return;
     try {
-      await fetch(`${API_BASE}/workspace/delete`, {
+      await fetch(`${API_BASE}/workspace/file`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: itemPath }),
       });
-      setOpenFiles((prev) => prev.filter((f) => f.path !== itemPath));
-      if (activeTab === itemPath) setActiveTab(null);
+      setOpenFiles((prev) => prev.filter((f) => f.path !== itemPath && !f.path.startsWith(`${itemPath}/`)));
+      if (activeTab === itemPath || activeTab?.startsWith(`${itemPath}/`)) setActiveTab(null);
       await fetchTree();
     } catch (err) { console.error('Delete failed:', err); }
   }, [fetchTree, activeTab]);
@@ -495,7 +751,6 @@ export default function App() {
 
   // Context menu handler
   const handleTreeContextMenu = useCallback((e, path, isDir) => {
-    const rect = e.currentTarget?.getBoundingClientRect?.() || { left: e.clientX, top: e.clientY };
     const items = [];
     if (isDir) {
       items.push({ label: 'New File', icon: FilePlus, action: () => createNewFile(path) });
@@ -508,6 +763,54 @@ export default function App() {
     }
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
   }, [createNewFile, createNewFolder, renameItem, deleteItem, downloadFile]);
+
+  // ==========================
+  // Objective 2: Human-in-the-Loop Roadmap Actions
+  // ==========================
+  const approveRoadmap = useCallback(async () => {
+    setChatLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/roadmap/approve`, { method: 'POST' });
+      const data = await res.json();
+      setMessages((prev) => [
+        ...prev.map((m) => (m.type === 'roadmap' ? { ...m, status: 'approved' } : m)),
+        { type: 'system_event', content: data.content || 'Roadmap approved! Starting execution...' }
+      ]);
+    } catch (err) {
+      console.error('Failed to approve roadmap:', err);
+    } finally {
+      setChatLoading(false);
+    }
+  }, []);
+
+  const feedbackRoadmap = useCallback(async (feedbackText) => {
+    setChatLoading(true);
+    setMessages((prev) => [
+      ...prev,
+      { type: 'chat', sender: 'user', content: feedbackText }
+    ]);
+    try {
+      const res = await fetch(`${API_BASE}/roadmap/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: feedbackText }),
+      });
+      const data = await res.json();
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: 'roadmap',
+          content: data.content,
+          roadmap: data.roadmap,
+          status: data.status || 'awaiting_approval',
+        }
+      ]);
+    } catch (err) {
+      console.error('Failed to update roadmap:', err);
+    } finally {
+      setChatLoading(false);
+    }
+  }, []);
 
   // ==========================
   // Chat with Master Agent
@@ -528,7 +831,17 @@ export default function App() {
       });
       const data = await res.json();
 
-      if (data.type === 'chat') {
+      if (data.type === 'roadmap') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: 'roadmap',
+            content: data.content,
+            roadmap: data.roadmap,
+            status: data.status || 'awaiting_approval',
+          }
+        ]);
+      } else if (data.type === 'chat') {
         setMessages((prev) => [...prev, { type: 'chat', sender: 'assistant', content: data.content }]);
       } else {
         setMessages((prev) => [...prev, {
@@ -545,7 +858,7 @@ export default function App() {
   }, [chatInput, chatLoading]);
 
   // ==========================
-  // WebSocket connection (events → system events in chat)
+  // WebSocket connection
   // ==========================
   useEffect(() => {
     let reconnectTimer;
@@ -559,10 +872,49 @@ export default function App() {
       ws.onmessage = (msg) => {
         try {
           const event = JSON.parse(msg.data);
+
+          // 1. Objective 1.2: Real-time file sync
+          if (event.type === 'fs_update') {
+            fetchTree();
+            return;
+          }
+
+          // 2. Objective 3.1: Live File Pill in Chat stream
+          if (event.type === 'file_written') {
+            setMessages((prev) => [...prev, {
+              type: 'file_pill',
+              path: event.path,
+              action: event.action || 'created',
+            }]);
+            fetchTree();
+            return;
+          }
+
+          // 3. Objective 3.2: Final Summary
+          if (event.type === 'final_summary') {
+            setMessages((prev) => [...prev, {
+              type: 'final_summary',
+              content: event.content,
+              files: event.files || [],
+            }]);
+            fetchTree();
+            return;
+          }
+
+          // 4. Objective 2: Roadmap approval status broadcast
+          if (event.type === 'roadmap_status') {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.type === 'roadmap' ? { ...m, status: event.status } : m
+              )
+            );
+            return;
+          }
+
+          // 5. Standard Blackboard events
           const role = event.role || event.agent_role || 'system';
           const status = event.status || '';
 
-          // Show agent transitions as compact system events in chat
           if (role !== 'user') {
             let label = `${role}`;
             if (status.includes('pending_')) label += ` → ${status.replace('pending_', '')}`;
@@ -575,7 +927,7 @@ export default function App() {
             }]);
           }
 
-          // Refresh file tree when coder finishes (new files may exist)
+          // Refresh tree when coder finishes or task is completed
           if (status === 'pending_reviewer' || status === 'task_completed') {
             fetchTree();
           }
@@ -586,6 +938,7 @@ export default function App() {
     connect();
     return () => { clearTimeout(reconnectTimer); wsRef.current?.close(); };
   }, [fetchTree]);
+
 
   // Auto-scroll chat
   useEffect(() => {
@@ -676,6 +1029,11 @@ export default function App() {
                 activeFile={activeTab}
                 onFileClick={openFile}
                 onContextMenu={handleTreeContextMenu}
+                onCreateFile={createNewFile}
+                onCreateFolder={createNewFolder}
+                onRename={renameItem}
+                onDelete={deleteItem}
+                onDownload={downloadFile}
               />
             ))}
             {tree && (!tree.children || tree.children.length === 0) && (
@@ -771,10 +1129,18 @@ export default function App() {
               </div>
             )}
             {messages.map((msg, i) => (
-              <ChatMessage key={i} msg={msg} />
+              <ChatMessage
+                key={i}
+                msg={msg}
+                onOpenFile={openFile}
+                onApproveRoadmap={approveRoadmap}
+                onFeedbackRoadmap={feedbackRoadmap}
+                disabled={chatLoading}
+              />
             ))}
             <div ref={chatEndRef} />
           </div>
+
 
           <div className="chat-input-area">
             <input

@@ -74,8 +74,9 @@ class SupervisorResponse(BaseModel):
 class DesignerResponse(BaseModel):
     """Designer architecture & technical blueprint schema."""
     architecture_overview: str
-    component_interfaces: Dict[str, str]
+    component_interfaces: Dict[str, Any]
     file_structures: List[str]
+
 
 
 class CoderResponse(BaseModel):
@@ -115,7 +116,28 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     """Response from the Master Agent to the frontend."""
-    type: str = Field(description="'chat' for conversational, 'system_event' for pipeline dispatch")
+    type: str = Field(description="'chat', 'system_event', or 'roadmap'")
     content: str = Field(description="The message content to display")
     sub_tasks: Optional[List[str]] = Field(default=None, description="List of dispatched sub-task descriptions")
+    roadmap: Optional[Dict[str, Any]] = Field(default=None, description="Structured roadmap plan for HITL approval")
+    status: Optional[str] = Field(default=None, description="Current workflow state (e.g. awaiting_approval, approved)")
+
+
+# --- Phase 3.5 HITL & Workspace Schemas ---
+
+class RoadmapFeedbackRequest(BaseModel):
+    """Payload for submitting custom instructions to revise a roadmap."""
+    feedback: str = Field(description="User's custom instructions or adjustments to the plan")
+
+
+class DeleteFilePayload(BaseModel):
+    """Payload for DELETE /workspace/file."""
+    path: str = Field(description="Relative path of the file or directory to delete")
+
+
+class RenameFilePayload(BaseModel):
+    """Payload for PUT /workspace/rename."""
+    old_path: str = Field(description="Relative path of existing file or directory")
+    new_path: str = Field(description="Relative path of the new destination")
+
 
