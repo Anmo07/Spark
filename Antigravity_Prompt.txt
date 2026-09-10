@@ -1,0 +1,24 @@
+# Prompt for Antigravity (Initial Project Setup)
+
+You are tasked with bootstrapping the core infrastructure for a local, strictly reactive Multi-Agent Software Sandbox.
+
+This project requires setting up a Python FastAPI backend that interacts with an SQLite database (the "Blackboard") and an external local AI server (llama.cpp). Do not write the agent logic yet; focus strictly on the event bus, database, and background task infrastructure.
+
+Please generate the following components in Python using FastAPI, asyncio, aiosqlite, and pydantic:
+
+1. Database Setup (database.py):
+  ⚬ Write an async initialization function that creates an SQLite database.
+  ⚬ Create an event_log table with columns: id (INTEGER PRIMARY KEY), timestamp (DATETIME), agent_role (TEXT), status (TEXT), data (JSON).
+  ⚬ Create a virtual table using the FTS5 extension linked to the event_log for fast text searching on the data column.
+2. Data Contracts (schemas.py):
+  ⚬ Create standard Pydantic models for the system.
+  ⚬ EventCreate (role, status, data).
+  ⚬ EventResponse (id, timestamp, role, status, data).
+3. The FastAPI Event Bus (main.py):
+  ⚬ Set up a FastAPI application.
+  ⚬ Create an asyncio.Queue at the global level to act as our internal event bus.
+  ⚬ Write a POST /task endpoint that accepts a user string, creates a new database entry with status="pending_supervisor", and pushes the event ID to the asyncio.Queue.
+  ⚬ Write a background worker function using @app.on_event("startup") that continuously listens to the queue. For now, when it pops an event, have it just print the event details to the terminal (we will connect the LLM API here in the next phase).
+  ⚬ Create a simple WebSocket endpoint WS /ws/events intended to stream database updates.
+
+Please ensure the code is clean, fully typed, and strictly handles async database connections properly using aiosqlite.

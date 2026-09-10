@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Agent Software Sandbox</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #090d16;
+      --bg-surface: #111827;
+      --bg-surface-elevated: #1a2234;
+      --border-subtle: #1e293b;
+      --border-active: #3b82f6;
+      --text-primary: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: white;
+    }
+
+    .brand-title {
+      font-size: 1.125rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      background: var(--bg-surface-elevated);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-amber);
+      transition: background 0.3s;
+    }
+
+    .status-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .panel-body {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    textarea, input[type="text"] {
+      width: 100%;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      color: var(--text-primary);
+      padding: 0.75rem 1rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: var(--border-active);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 110px;
+    }
+
+    button {
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.875rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+      color: white;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    }
+
+    .btn-primary:hover {
+      opacity: 0.95;
+      transform: translateY(-1px);
+    }
+
+    .search-box-wrap {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn-secondary {
+      background: var(--bg-surface-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+    }
+
+    /* Event Timeline Stream */
+    .timeline-container {
+      flex: 1;
+      overflow-y: auto;
+      max-height: calc(100vh - 260px);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .event-card {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 1rem;
+      transition: border-color 0.2s, transform 0.2s;
+      animation: slideIn 0.25s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .event-card:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+    }
+
+    .event-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-role-user { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-role-supervisor { background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.3); }
+    .badge-role-coder { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-role-reviewer { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+    .event-time {
+      font-family: var(--font-mono);
+      font-size: 0.725rem;
+      color: var(--text-muted);
+    }
+
+    .event-status {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .event-payload {
+      background: #0d1117;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #cbd5e1;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 3rem 1rem;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">S</div>
+      <div>
+        <div class="brand-title">Multi-Agent Software Sandbox</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted);">Reactive Blackboard & Event Bus</div>
+      </div>
+    </div>
+    <div class="status-pill">
+      <span class="status-dot" id="ws-dot"></span>
+      <span id="ws-status">Connecting WebSocket...</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left Column: Controls & Search -->
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <!-- Task Submission -->
+      <section class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Dispatch New Task</span>
+        </div>
+        <div class="panel-body">
+          <form id="task-form">
+            <label for="prompt-input">Agent Goal / Directive</label>
+            <textarea id="prompt-input" placeholder="e.g. Build an asynchronous memory cache with TTL eviction..." required></textarea>
+            <div style="margin-top: 1rem;">
+              <button type="submit" class="btn-primary" id="btn-submit">
+                Enqueue Task (POST /task)
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- FTS5 Search Replay Engine -->
+      <section class="panel">
+        <div class="panel-header">
+          <span class="panel-title">FTS5 Timeline Search</span>
+          <span style="font-size: 0.75rem; color: var(--accent-blue); font-family: var(--font-mono);" id="search-count"></span>
+        </div>
+        <div class="panel-body">
+          <label for="search-input">Search Blackboard History</label>
+          <div class="search-box-wrap">
+            <input type="text" id="search-input" placeholder="Search keywords (e.g. cache, supervisor)...">
+            <button type="button" class="btn-secondary" id="btn-search">Search</button>
+            <button type="button" class="btn-secondary" id="btn-reset">Reset</button>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">
+            Instant full-text query across all historical action data powered by SQLite FTS5.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Right Column: Live Event Stream -->
+    <section class="panel" style="display: flex; flex-direction: column;">
+      <div class="panel-header">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="panel-title" id="timeline-title">Live Blackboard Event Stream</span>
+        </div>
+        <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);" id="event-counter">0 events</span>
+      </div>
+
+      <div class="timeline-container" id="timeline-feed">
+        <div class="empty-state" id="feed-empty">No events yet. Submit a task to begin reactive agent execution.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const wsDot = document.getElementById('ws-dot');
+    const wsStatus = document.getElementById('ws-status');
+    const timelineFeed = document.getElementById('timeline-feed');
+    const feedEmpty = document.getElementById('feed-empty');
+    const eventCounter = document.getElementById('event-counter');
+    const taskForm = document.getElementById('task-form');
+    const promptInput = document.getElementById('prompt-input');
+    const btnSubmit = document.getElementById('btn-submit');
+    const searchInput = document.getElementById('search-input');
+    const btnSearch = document.getElementById('btn-search');
+    const btnReset = document.getElementById('btn-reset');
+    const searchCount = document.getElementById('search-count');
+    const timelineTitle = document.getElementById('timeline-title');
+
+    let events = [];
+    let isSearchMode = false;
+
+    // WebSocket Management
+    function setupWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws/events`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        wsDot.classList.add('connected');
+        wsStatus.textContent = 'WS Connected';
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const eventData = JSON.parse(evt.data);
+          addEventToFeed(eventData, true);
+        } catch (err) {
+          console.error('Failed to parse WS event payload:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        wsDot.classList.remove('connected');
+        wsStatus.textContent = 'WS Disconnected (reconnecting...)';
+        setTimeout(setupWebSocket, 2000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket encountered an error:', err);
+      };
+    }
+
+    function getRoleBadgeClass(role) {
+      const r = (role || '').toLowerCase();
+      if (r.includes('supervisor')) return 'badge-role-supervisor';
+      if (r.includes('coder')) return 'badge-role-coder';
+      if (r.includes('reviewer')) return 'badge-role-reviewer';
+      return 'badge-role-user';
+    }
+
+    function createEventCard(event) {
+      const card = document.createElement('div');
+      card.className = 'event-card';
+      const role = event.agent_role || event.role || 'system';
+      const roleBadgeClass = getRoleBadgeClass(role);
+      const payloadString = typeof event.data === 'object' ? JSON.stringify(event.data, null, 2) : event.data;
+
+      card.innerHTML = `
+        <div class="event-card-header">
+          <span class="badge ${roleBadgeClass}">#${event.id} &bull; ${role}</span>
+          <span class="event-time">${event.timestamp || new Date().toLocaleTimeString()}</span>
+        </div>
+        <div class="event-status">Status: <strong>${event.status}</strong></div>
+        <pre class="event-payload">${escapeHtml(payloadString)}</pre>
+      `;
+      return card;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function addEventToFeed(event, prepend = true) {
+      if (feedEmpty) feedEmpty.style.display = 'none';
+      events.unshift(event);
+      if (!isSearchMode) {
+        const card = createEventCard(event);
+        if (prepend && timelineFeed.firstChild) {
+          timelineFeed.insertBefore(card, timelineFeed.firstChild);
+        } else {
+          timelineFeed.appendChild(card);
+        }
+        eventCounter.textContent = `${events.length} events`;
+      }
+    }
+
+    // Task Submission (POST /task)
+    taskForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const prompt = promptInput.value.trim();
+      if (!prompt) return;
+
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Submitting...';
+
+      try {
+        const res = await fetch('/task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt }),
+        });
+
+        if (res.ok) {
+          promptInput.value = '';
+        } else {
+          const err = await res.json();
+          alert('Task submission failed: ' + (err.detail || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Network error submitting task: ' + err.message);
+      } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = 'Enqueue Task (POST /task)';
+      }
+    });
+
+    // FTS5 Search
+    async function executeSearch() {
+      const q = searchInput.value.trim();
+      if (!q) {
+        resetSearch();
+        return;
+      }
+
+      isSearchMode = true;
+      timelineTitle.textContent = `FTS5 Results: "${q}"`;
+      timelineFeed.innerHTML = '<div class="empty-state">Searching Blackboard index...</div>';
+
+      try {
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        timelineFeed.innerHTML = '';
+        searchCount.textContent = `${data.count} matches`;
+
+        if (data.results && data.results.length > 0) {
+          data.results.forEach((item) => {
+            timelineFeed.appendChild(createEventCard(item));
+          });
+        } else {
+          timelineFeed.innerHTML = `<div class="empty-state">No matching events found for query: "${escapeHtml(q)}"</div>`;
+        }
+      } catch (err) {
+        timelineFeed.innerHTML = `<div class="empty-state" style="color:#ef4444;">Search error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function resetSearch() {
+      isSearchMode = false;
+      searchInput.value = '';
+      searchCount.textContent = '';
+      timelineTitle.textContent = 'Live Blackboard Event Stream';
+      timelineFeed.innerHTML = '';
+      if (events.length === 0) {
+        timelineFeed.innerHTML = '<div class="empty-state" id="feed-empty">No events yet. Submit a task to begin reactive agent execution.</div>';
+      } else {
+        events.forEach((item) => {
+          timelineFeed.appendChild(createEventCard(item));
+        });
+      }
+      eventCounter.textContent = `${events.length} events`;
+    }
+
+    btnSearch.addEventListener('click', executeSearch);
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') executeSearch();
+    });
+    btnReset.addEventListener('click', resetSearch);
+
+    // Initial Load of Recent Events
+    async function loadRecentEvents() {
+      try {
+        const res = await fetch('/events');
+        if (res.ok) {
+          const list = await res.json();
+          // Events from /events are newest first
+          list.reverse().forEach((evt) => addEventToFeed(evt, true));
+        }
+      } catch (e) {
+        console.warn('Could not load initial events:', e);
+      }
+    }
+
+    // Startup
+    setupWebSocket();
+    loadRecentEvents();
+  </script>
+</body>
+</html>
