@@ -32,7 +32,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel as _BaseModel
 
@@ -77,6 +77,7 @@ dispatcher = AgentDispatcher()
 master_agent = MasterAgent()
 
 STATIC_DIR = Path(__file__).parent / "static"
+FRONTEND_DIST_DIR = Path(__file__).parent / "frontend" / "dist"
 WORKSPACE_DIR = Path(__file__).parent / "sandbox_workspace"
 ROADMAP_STATE_FILE = Path(__file__).parent / ".spark_roadmap.json"
 
@@ -298,14 +299,48 @@ if STATIC_DIR.exists():
 if WORKSPACE_DIR.exists():
     app.mount("/preview", StaticFiles(directory=str(WORKSPACE_DIR), html=True), name="preview")
 
+# Mount modern React IDE production assets
+frontend_assets = FRONTEND_DIST_DIR / "assets"
+if not frontend_assets.exists():
+    frontend_assets.mkdir(parents=True, exist_ok=True)
+app.mount("/assets", StaticFiles(directory=str(frontend_assets)), name="frontend-assets")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index() -> HTMLResponse:
-    """Serve the single-page HTML interface for real-time monitoring and searching."""
+    """Serve the modern React IDE interface, falling back to static HTML if unbuilt."""
+    modern_index = FRONTEND_DIST_DIR / "index.html"
+    if modern_index.exists():
+        return HTMLResponse(content=modern_index.read_text(encoding="utf-8"))
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
         return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
     return HTMLResponse("<h2>Multi-Agent Software Sandbox is Running</h2>")
+
+
+@app.get("/legacy", response_class=HTMLResponse)
+async def get_legacy() -> HTMLResponse:
+    """Serve the legacy single-page HTML interface for backwards compatibility."""
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+    return HTMLResponse("<h2>Legacy interface not found</h2>")
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+async def get_favicon():
+    favicon_file = FRONTEND_DIST_DIR / "favicon.svg"
+    if favicon_file.exists():
+        return FileResponse(str(favicon_file), media_type="image/svg+xml")
+    return Response(status_code=404)
+
+
+@app.get("/icons.svg", include_in_schema=False)
+async def get_icons():
+    icons_file = FRONTEND_DIST_DIR / "icons.svg"
+    if icons_file.exists():
+        return FileResponse(str(icons_file), media_type="image/svg+xml")
+    return Response(status_code=404)
 
 
 @app.get("/health")

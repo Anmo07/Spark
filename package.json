@@ -4,9 +4,15 @@
   "description": "Multi-Agent Software Sandbox for Apple Silicon",
   "scripts": {
     "start": "./run.sh",
-    "test": ".venv/bin/pytest -v",
+    "dev": "./run.sh --dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": ".venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
+    "build": "npm --prefix frontend run build && npm run build:css",
+    "build:frontend": "npm --prefix frontend run build",
     "build:css": "npx tailwindcss -i ./src/input.css -o ./static/style.css --minify",
-    "watch:css": "npx tailwindcss -i ./src/input.css -o ./static/style.css --watch"
+    "watch:css": "npx tailwindcss -i ./src/input.css -o ./static/style.css --watch",
+    "lint:frontend": "npm --prefix frontend run lint",
+    "test": ".venv/bin/pytest -v"
   },
   "devDependencies": {
     "autoprefixer": "^10.5.6",

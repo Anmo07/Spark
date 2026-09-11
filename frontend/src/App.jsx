@@ -1557,7 +1557,10 @@ export default function App() {
                           className="preview-refresh-btn"
                           onClick={() => {
                             const iframe = document.getElementById('spark-preview-iframe');
-                            if (iframe) iframe.src = iframe.src;
+                            if (iframe) {
+                              const cur = iframe.src;
+                              iframe.src = cur;
+                            }
                           }}
                           title="Reload preview"
                         >
