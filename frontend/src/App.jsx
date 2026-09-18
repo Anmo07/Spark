@@ -37,8 +37,12 @@ import {
   GitBranch,
   GitCompare,
   Contrast,
+  Palette,
 } from 'lucide-react';
 import SourceControl from './SourceControl';
+import SplineHero from './SplineHero';
+import SplineMiniOrb from './SplineMiniOrb';
+import ThemeStudioModal from './ThemeStudioModal';
 import './App.css';
 
 
@@ -479,33 +483,84 @@ const TerminalPane = forwardRef(function TerminalPane(
   const pendingCommandsRef = useRef([]);
 
   const getTerminalTheme = useCallback((t) => {
-    return t === 'high-contrast' ? {
-      background: '#000000',
-      foreground: '#ffffff',
-      cursor: '#38bdf8',
-      selectionBackground: 'rgba(56, 189, 248, 0.45)',
-      black: '#000000',
-      red: '#ff4d6d',
-      green: '#00f59b',
-      yellow: '#ffd166',
-      blue: '#38bdf8',
-      magenta: '#c084fc',
-      cyan: '#22d3ee',
-      white: '#ffffff',
-    } : {
-      background: '#0a0a0f',
-      foreground: '#e4e4ed',
-      cursor: '#3b82f6',
-      selectionBackground: 'rgba(59, 130, 246, 0.3)',
-      black: '#1e1e28',
-      red: '#f43f5e',
-      green: '#10b981',
-      yellow: '#f59e0b',
-      blue: '#3b82f6',
-      magenta: '#8b5cf6',
-      cyan: '#06b6d4',
-      white: '#e4e4ed',
-    };
+    switch (t) {
+      case 'synthwave':
+        return {
+          background: '#0a0714',
+          foreground: '#fff0f5',
+          cursor: '#f43f5e',
+          selectionBackground: 'rgba(244, 63, 94, 0.35)',
+          black: '#1a1432',
+          red: '#f43f5e',
+          green: '#34d399',
+          yellow: '#fbbf24',
+          blue: '#38bdf8',
+          magenta: '#d946ef',
+          cyan: '#38bdf8',
+          white: '#ffffff',
+        };
+      case 'matrix-emerald':
+        return {
+          background: '#060b08',
+          foreground: '#e6f7ee',
+          cursor: '#10b981',
+          selectionBackground: 'rgba(16, 185, 129, 0.35)',
+          black: '#102016',
+          red: '#f43f5e',
+          green: '#10b981',
+          yellow: '#f59e0b',
+          blue: '#06b6d4',
+          magenta: '#34d399',
+          cyan: '#34d399',
+          white: '#e6f7ee',
+        };
+      case 'deep-space':
+        return {
+          background: '#080d1a',
+          foreground: '#f0f6fc',
+          cursor: '#38bdf8',
+          selectionBackground: 'rgba(59, 130, 246, 0.35)',
+          black: '#16223d',
+          red: '#f43f5e',
+          green: '#10b981',
+          yellow: '#f59e0b',
+          blue: '#3b82f6',
+          magenta: '#6366f1',
+          cyan: '#06b6d4',
+          white: '#f0f6fc',
+        };
+      case 'high-contrast':
+        return {
+          background: '#000000',
+          foreground: '#ffffff',
+          cursor: '#38bdf8',
+          selectionBackground: 'rgba(56, 189, 248, 0.45)',
+          black: '#000000',
+          red: '#ff4d6d',
+          green: '#00f59b',
+          yellow: '#ffd166',
+          blue: '#38bdf8',
+          magenta: '#c084fc',
+          cyan: '#22d3ee',
+          white: '#ffffff',
+        };
+      case 'cyber-neon':
+      default:
+        return {
+          background: '#07080f',
+          foreground: '#f1f1f8',
+          cursor: '#8b5cf6',
+          selectionBackground: 'rgba(139, 92, 246, 0.35)',
+          black: '#141624',
+          red: '#f43f5e',
+          green: '#10b981',
+          yellow: '#f59e0b',
+          blue: '#6366f1',
+          magenta: '#8b5cf6',
+          cyan: '#06b6d4',
+          white: '#f1f1f8',
+        };
+    }
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -677,17 +732,90 @@ export default function App() {
   const [gitChangesCount, setGitChangesCount] = useState(0);
   const [diffView, setDiffView] = useState(null); // { path: string, original: string, modified: string } | null
 
-  // --- Theme state (High Contrast Dark vs Standard Dark) ---
+  // --- Theme & 3D Studio state ---
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('spark_theme') || 'high-contrast';
+    return localStorage.getItem('spark_theme') || 'cyber-neon';
+  });
+  const [splineUrl, setSplineUrl] = useState(() => {
+    return (
+      localStorage.getItem('spark_spline_url') ||
+      'https://prod.spline.design/6Wq1Q7YGyM-iab9i/scene.splinecode'
+    );
+  });
+  const [themeStudioOpen, setThemeStudioOpen] = useState(false);
+  const [auroraEnabled, setAuroraEnabled] = useState(() => {
+    return localStorage.getItem('spark_fx_aurora') !== 'false';
+  });
+  const [glassEnabled, setGlassEnabled] = useState(() => {
+    return localStorage.getItem('spark_fx_glass') !== 'false';
+  });
+  const [shimmerEnabled, setShimmerEnabled] = useState(() => {
+    return localStorage.getItem('spark_fx_shimmer') !== 'false';
   });
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
-      const next = prev === 'high-contrast' ? 'dark' : 'high-contrast';
+      const next =
+        prev === 'cyber-neon'
+          ? 'synthwave'
+          : prev === 'synthwave'
+          ? 'matrix-emerald'
+          : prev === 'matrix-emerald'
+          ? 'deep-space'
+          : prev === 'deep-space'
+          ? 'high-contrast'
+          : 'cyber-neon';
       localStorage.setItem('spark_theme', next);
       return next;
     });
+  }, []);
+
+  const handleSelectPalette = useCallback((p) => {
+    setTheme(p);
+    localStorage.setItem('spark_theme', p);
+  }, []);
+
+  const handleSelectSplineUrl = useCallback((url) => {
+    setSplineUrl(url);
+    localStorage.setItem('spark_spline_url', url);
+  }, []);
+
+  const handleToggleAurora = useCallback(() => {
+    setAuroraEnabled((v) => {
+      const next = !v;
+      localStorage.setItem('spark_fx_aurora', String(next));
+      return next;
+    });
+  }, []);
+
+  const handleToggleGlass = useCallback(() => {
+    setGlassEnabled((v) => {
+      const next = !v;
+      localStorage.setItem('spark_fx_glass', String(next));
+      return next;
+    });
+  }, []);
+
+  const handleToggleShimmer = useCallback(() => {
+    setShimmerEnabled((v) => {
+      const next = !v;
+      localStorage.setItem('spark_fx_shimmer', String(next));
+      return next;
+    });
+  }, []);
+
+  // Mount effect: inject user's custom CSS if saved
+  useEffect(() => {
+    const savedCustomCss = localStorage.getItem('spark_user_custom_css');
+    if (savedCustomCss) {
+      let styleTag = document.getElementById('spark-user-custom-css');
+      if (!styleTag) {
+        styleTag = document.createElement('style');
+        styleTag.id = 'spark-user-custom-css';
+        document.head.appendChild(styleTag);
+      }
+      styleTag.innerHTML = savedCustomCss;
+    }
   }, []);
 
   // --- Chat state ---
