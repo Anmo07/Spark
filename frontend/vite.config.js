@@ -20,9 +20,6 @@ export default defineConfig({
             if (id.includes('lucide-react')) {
               return 'vendor-icons';
             }
-            if (id.includes('@splinetool')) {
-              return 'vendor-spline';
-            }
             if (id.includes('react') || id.includes('react-dom')) {
               return 'vendor-react';
             }

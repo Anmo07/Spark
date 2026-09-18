@@ -38,11 +38,12 @@ import {
   GitCompare,
   Contrast,
   Palette,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import SourceControl from './SourceControl';
-import SplineHero from './SplineHero';
-import SplineMiniOrb from './SplineMiniOrb';
-import ThemeStudioModal from './ThemeStudioModal';
+import WorkspaceWelcome from './WorkspaceWelcome';
+import AppearanceModal from './AppearanceModal';
 import './App.css';
 
 
@@ -483,84 +484,37 @@ const TerminalPane = forwardRef(function TerminalPane(
   const pendingCommandsRef = useRef([]);
 
   const getTerminalTheme = useCallback((t) => {
-    switch (t) {
-      case 'synthwave':
-        return {
-          background: '#0a0714',
-          foreground: '#fff0f5',
-          cursor: '#f43f5e',
-          selectionBackground: 'rgba(244, 63, 94, 0.35)',
-          black: '#1a1432',
-          red: '#f43f5e',
-          green: '#34d399',
-          yellow: '#fbbf24',
-          blue: '#38bdf8',
-          magenta: '#d946ef',
-          cyan: '#38bdf8',
-          white: '#ffffff',
-        };
-      case 'matrix-emerald':
-        return {
-          background: '#060b08',
-          foreground: '#e6f7ee',
-          cursor: '#10b981',
-          selectionBackground: 'rgba(16, 185, 129, 0.35)',
-          black: '#102016',
-          red: '#f43f5e',
-          green: '#10b981',
-          yellow: '#f59e0b',
-          blue: '#06b6d4',
-          magenta: '#34d399',
-          cyan: '#34d399',
-          white: '#e6f7ee',
-        };
-      case 'deep-space':
-        return {
-          background: '#080d1a',
-          foreground: '#f0f6fc',
-          cursor: '#38bdf8',
-          selectionBackground: 'rgba(59, 130, 246, 0.35)',
-          black: '#16223d',
-          red: '#f43f5e',
-          green: '#10b981',
-          yellow: '#f59e0b',
-          blue: '#3b82f6',
-          magenta: '#6366f1',
-          cyan: '#06b6d4',
-          white: '#f0f6fc',
-        };
-      case 'high-contrast':
-        return {
-          background: '#000000',
-          foreground: '#ffffff',
-          cursor: '#38bdf8',
-          selectionBackground: 'rgba(56, 189, 248, 0.45)',
-          black: '#000000',
-          red: '#ff4d6d',
-          green: '#00f59b',
-          yellow: '#ffd166',
-          blue: '#38bdf8',
-          magenta: '#c084fc',
-          cyan: '#22d3ee',
-          white: '#ffffff',
-        };
-      case 'cyber-neon':
-      default:
-        return {
-          background: '#07080f',
-          foreground: '#f1f1f8',
-          cursor: '#8b5cf6',
-          selectionBackground: 'rgba(139, 92, 246, 0.35)',
-          black: '#141624',
-          red: '#f43f5e',
-          green: '#10b981',
-          yellow: '#f59e0b',
-          blue: '#6366f1',
-          magenta: '#8b5cf6',
-          cyan: '#06b6d4',
-          white: '#f1f1f8',
-        };
+    if (t === 'cream') {
+      return {
+        background: '#f4f3ef',
+        foreground: '#1c1917',
+        cursor: '#2563eb',
+        selectionBackground: 'rgba(37, 99, 235, 0.25)',
+        black: '#1c1917',
+        red: '#e11d48',
+        green: '#059669',
+        yellow: '#d97706',
+        blue: '#2563eb',
+        magenta: '#7c3aed',
+        cyan: '#0891b2',
+        white: '#ffffff',
+      };
     }
+    // Default: Absolute Dark OLED
+    return {
+      background: '#000000',
+      foreground: '#ededed',
+      cursor: '#3b82f6',
+      selectionBackground: 'rgba(59, 130, 246, 0.35)',
+      black: '#121212',
+      red: '#f43f5e',
+      green: '#10b981',
+      yellow: '#f59e0b',
+      blue: '#3b82f6',
+      magenta: '#8b5cf6',
+      cyan: '#06b6d4',
+      white: '#ffffff',
+    };
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -732,76 +686,23 @@ export default function App() {
   const [gitChangesCount, setGitChangesCount] = useState(0);
   const [diffView, setDiffView] = useState(null); // { path: string, original: string, modified: string } | null
 
-  // --- Theme & 3D Studio state ---
+  // --- Theme state (Absolute Dark vs Warm Cream) ---
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('spark_theme') || 'cyber-neon';
+    return localStorage.getItem('spark_theme') || 'dark';
   });
-  const [splineUrl, setSplineUrl] = useState(() => {
-    return (
-      localStorage.getItem('spark_spline_url') ||
-      'https://prod.spline.design/6Wq1Q7YGyM-iab9i/scene.splinecode'
-    );
-  });
-  const [themeStudioOpen, setThemeStudioOpen] = useState(false);
-  const [auroraEnabled, setAuroraEnabled] = useState(() => {
-    return localStorage.getItem('spark_fx_aurora') !== 'false';
-  });
-  const [glassEnabled, setGlassEnabled] = useState(() => {
-    return localStorage.getItem('spark_fx_glass') !== 'false';
-  });
-  const [shimmerEnabled, setShimmerEnabled] = useState(() => {
-    return localStorage.getItem('spark_fx_shimmer') !== 'false';
-  });
+  const [appearanceModalOpen, setAppearanceModalOpen] = useState(false);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
-      const next =
-        prev === 'cyber-neon'
-          ? 'synthwave'
-          : prev === 'synthwave'
-          ? 'matrix-emerald'
-          : prev === 'matrix-emerald'
-          ? 'deep-space'
-          : prev === 'deep-space'
-          ? 'high-contrast'
-          : 'cyber-neon';
+      const next = prev === 'cream' ? 'dark' : 'cream';
       localStorage.setItem('spark_theme', next);
       return next;
     });
   }, []);
 
-  const handleSelectPalette = useCallback((p) => {
-    setTheme(p);
-    localStorage.setItem('spark_theme', p);
-  }, []);
-
-  const handleSelectSplineUrl = useCallback((url) => {
-    setSplineUrl(url);
-    localStorage.setItem('spark_spline_url', url);
-  }, []);
-
-  const handleToggleAurora = useCallback(() => {
-    setAuroraEnabled((v) => {
-      const next = !v;
-      localStorage.setItem('spark_fx_aurora', String(next));
-      return next;
-    });
-  }, []);
-
-  const handleToggleGlass = useCallback(() => {
-    setGlassEnabled((v) => {
-      const next = !v;
-      localStorage.setItem('spark_fx_glass', String(next));
-      return next;
-    });
-  }, []);
-
-  const handleToggleShimmer = useCallback(() => {
-    setShimmerEnabled((v) => {
-      const next = !v;
-      localStorage.setItem('spark_fx_shimmer', String(next));
-      return next;
-    });
+  const handleSelectTheme = useCallback((t) => {
+    setTheme(t);
+    localStorage.setItem('spark_theme', t);
   }, []);
 
   // Mount effect: inject user's custom CSS if saved
@@ -1403,7 +1304,7 @@ export default function App() {
   // ======================================================================
   return (
     <div
-      className={`ide-shell ${theme === 'high-contrast' ? 'theme-high-contrast' : ''}`}
+      className={`ide-shell theme-${theme}`}
       data-theme={theme}
     >
       {/* ======================== Title Bar ======================== */}
@@ -1416,14 +1317,27 @@ export default function App() {
           Multi-Agent Software Sandbox
         </span>
         <div style={{ flex: 1 }} />
+
+        {/* Quick Theme Toggle (Absolute Dark / Warm Cream) */}
         <button
-          className={`theme-toggle-btn ${theme === 'high-contrast' ? 'active' : ''}`}
+          className="appearance-toggle-btn"
           onClick={toggleTheme}
-          title={theme === 'high-contrast' ? 'Switch to Standard Dark theme' : 'Switch to High Contrast Dark theme'}
+          title={theme === 'cream' ? 'Switch to Absolute Dark mode' : 'Switch to Warm Cream mode'}
         >
-          <Contrast size={13} />
-          <span className="theme-toggle-label">{theme === 'high-contrast' ? 'High Contrast' : 'Standard Dark'}</span>
+          {theme === 'cream' ? <Moon size={13} /> : <Sun size={13} />}
+          <span>{theme === 'cream' ? 'Dark' : 'Cream'}</span>
         </button>
+
+        {/* Appearance & Custom CSS Modal Trigger */}
+        <button
+          className="appearance-toggle-btn"
+          onClick={() => setAppearanceModalOpen(true)}
+          title="Open Appearance & Custom CSS"
+        >
+          <Palette size={13} />
+          <span>Appearance</span>
+        </button>
+
         <button
           className="terminal-toggle-btn"
           onClick={() => setTerminalVisible((v) => !v)}
@@ -1629,7 +1543,7 @@ export default function App() {
                 </div>
                 <div className="diff-monaco-wrapper">
                   <DiffEditor
-                    theme={theme === 'high-contrast' ? 'hc-black' : 'vs-dark'}
+                    theme={theme === 'cream' ? 'vs' : 'hc-black'}
                     original={diffView.original}
                     modified={diffView.modified}
                     language={langFromPath(diffView.path)}
@@ -1650,7 +1564,7 @@ export default function App() {
               <div className="editor-content-split">
                 <div className={`monaco-wrapper ${showLivePreview && previewInfo ? 'half-width' : ''}`}>
                   <Editor
-                    theme={theme === 'high-contrast' ? 'hc-black' : 'vs-dark'}
+                    theme={theme === 'cream' ? 'vs' : 'hc-black'}
                     language={langFromPath(activeFile.path)}
                     value={activeFile.content}
                     onChange={onEditorChange}
@@ -1722,11 +1636,13 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <div className="editor-empty">
-                <Code2 size={48} />
-                <span>Select a file to begin editing</span>
-                <span style={{ fontSize: 12 }}>or chat with Spark to generate code</span>
-              </div>
+              <WorkspaceWelcome
+                onPromptChat={(prompt) => {
+                  setChatInput(prompt);
+                }}
+                onCreateFile={() => createNewFile('')}
+                onToggleTerminal={() => setTerminalVisible(true)}
+              />
             )}
           </div>
 
@@ -1751,8 +1667,13 @@ export default function App() {
         {/* ---------- Right: Chat Panel ---------- */}
         <div className="sidebar-chat">
           <div className="sidebar-header">
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Bot size={13} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                className="chat-status-indicator"
+                title={chatLoading || isRunning ? 'Agent working...' : 'Agent ready'}
+              >
+                <span className={`chat-status-dot ${chatLoading || isRunning ? 'active' : ''}`} />
+              </div>
               Spark Chat
             </span>
             <span className="text-muted" style={{ fontSize: 10, fontWeight: 400 }}>
@@ -1813,6 +1734,14 @@ export default function App() {
           {activeFile?.dirty ? ' • Unsaved changes' : ''}
         </span>
       </div>
+
+      {/* ======================== Appearance & Custom CSS Modal ======================== */}
+      <AppearanceModal
+        isOpen={appearanceModalOpen}
+        onClose={() => setAppearanceModalOpen(false)}
+        theme={theme}
+        onSelectTheme={handleSelectTheme}
+      />
 
       {/* Context Menu Portal */}
       {ctxMenu && (
